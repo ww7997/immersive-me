@@ -757,6 +757,19 @@
     return null;
   }
 
+  /** هل ترجمات يوتيوب مفعّلة هلّق؟ */
+  function ytCCIsOn() {
+    try {
+      var p = document.getElementById('movie_player');
+      if (p && p.isSubtitlesOn) return !!p.isSubtitlesOn();
+    } catch (e) {}
+    try {
+      var b = document.querySelector('.ytp-subtitles-button');
+      if (b) return b.getAttribute('aria-pressed') === 'true';
+    } catch (e) {}
+    return false;
+  }
+
   /** نحاول نفعّل ترجمات يوتيوب — بعدة طرق */
   function ytEnableCC() {
     try {
@@ -969,13 +982,13 @@
 
     /* ---- التحميل والبدائل ---- */
     if (!YT.loaded && !YT.live) {
-      if (!YT.ccClicked && YT.tries % 8 === 0) YT.ccClicked = ytEnableCC();
+      if (YT.tries % 10 === 0 && !ytCCIsOn()) ytEnableCC();   // نعيد المحاولة دايماً
       if (YT.tries % 6 === 0) {
         var c = ytCuesFromTrack();
         if (c) ytLoadCues(c);
       }
       YT.tries++;
-      if (YT.tries > 200 && !YT.live) {
+      if (YT.tries > 250 && !YT.live) {
         YT.live = true;
         document.documentElement.classList.add('imt-yt');
         showBadge('وضع مباشر — ترجمة لحظية');

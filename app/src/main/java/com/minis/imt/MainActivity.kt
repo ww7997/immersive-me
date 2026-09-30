@@ -68,6 +68,12 @@ class MainActivity : AppCompatActivity() {
     private var suppressNav = false
     private var lastBatchMs = 0L
     private var lastBatchCount = 0
+    private var ytInfo = ""
+    private var trInfo = ""
+
+    private fun refreshStatus() {
+        tvStatus.text = if (ytInfo.isBlank()) trInfo else trInfo + "  |  " + ytInfo
+    }
 
     private val C_BRAND = Color.parseColor("#7BA0FF")
     private val C_OK = Color.parseColor("#46D68C")
@@ -803,8 +809,8 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun ytStatus(msg: String) {
-            if (!Prefs.ytDebug) return
-            main.post { tvStatus.text = msg }
+            ytInfo = msg
+            main.post { refreshStatus() }
         }
 
         @JavascriptInterface
@@ -827,12 +833,13 @@ class MainActivity : AppCompatActivity() {
         fun status(done: Int, total: Int) {
             main.post {
                 val speed = if (lastBatchMs > 0)
-                    "  ·  ${lastBatchCount} مقاطع في ${"%.1f".format(lastBatchMs / 1000.0)}ث" else ""
-                tvStatus.text = when {
-                    total == 0 -> "ما لقيت نص قابل للترجمة بهالصفحة"
-                    done >= total -> "✓ ترجمت $done مقطع · الكاش: " + Prefs.cacheSize() + speed
-                    else -> "عم يترجم…  $done/$total  ·  " + Prefs.effectiveName() + speed
+                    "  ·  ${lastBatchCount} في ${"%.1f".format(lastBatchMs / 1000.0)}ث" else ""
+                trInfo = when {
+                    total == 0 -> "ما لقيت نص قابل للترجمة"
+                    done >= total -> "✓ $done مقطع · كاش ${Prefs.cacheSize()}$speed"
+                    else -> "عم يترجم…  $done/$total$speed"
                 }
+                refreshStatus()
             }
         }
 
