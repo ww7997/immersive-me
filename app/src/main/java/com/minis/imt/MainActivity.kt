@@ -80,6 +80,17 @@ class MainActivity : AppCompatActivity() {
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
+    /** نسخة سطح المكتب — ضرورية ليوتيوب: موقع الموبايل ما عندو زر ترجمات */
+    private val UA_DESKTOP = UA.replace(" Mobile", "")
+
+    /** يختار وكيل المستخدم المناسب للرابط قبل التحميل */
+    private fun applyUaFor(url: String?) {
+        val h = hostOf(url) ?: ""
+        val desktop = Prefs.desktopMode || h.contains("youtube.com") || h.contains("youtu.be")
+        val want = if (desktop) UA_DESKTOP else UA
+        if (web.settings.userAgentString != want) web.settings.userAgentString = want
+    }
+
     private val LANGS = listOf(
         "ar" to "العربية", "en" to "English", "de" to "Deutsch", "fr" to "Français",
         "es" to "Español", "tr" to "Türkçe", "ru" to "Русский", "fa" to "فارسی",
@@ -205,7 +216,10 @@ class MainActivity : AppCompatActivity() {
         bottomNav.selectedItemId = R.id.tab_browser
         suppressNav = false
         selectTab(R.id.tab_browser)
-        if (!url.isNullOrBlank()) web.loadUrl(url)
+        if (!url.isNullOrBlank()) {
+            applyUaFor(url)
+            web.loadUrl(url)
+        }
     }
 
     private fun showSoon(emoji: String, title: String, body: String, action: String, url: String?) {
@@ -242,7 +256,7 @@ class MainActivity : AppCompatActivity() {
 
         homeRoot.addView(sectionLabel("وصول سريع"))
         homeRoot.addView(tileRow(listOf(
-            Triple("\uD83C\uDFAC", "يوتيوب", "https://m.youtube.com"),
+            Triple("\uD83C\uDFAC", "يوتيوب", "https://www.youtube.com"),
             Triple("\uD83D\uDD0D", "جوجل", "https://www.google.com"),
             Triple("\uD83D\uDCDA", "ويكيبيديا", "https://en.wikipedia.org")
         )))
@@ -552,6 +566,7 @@ class MainActivity : AppCompatActivity() {
         if (q.isEmpty()) return
         if (!q.contains(".") || q.contains(" ")) q = "https://www.google.com/search?q=" + Uri.encode(q)
         else if (!q.startsWith("http")) q = "https://$q"
+        applyUaFor(q)
         web.loadUrl(q)
     }
 
@@ -602,13 +617,27 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val u = request?.url ?: return false
                 val scheme = u.scheme ?: return false
-                if (scheme == "http" || scheme == "https") return false
+                if (scheme == "http" || scheme == "https") {
+                    // يوتيوب: نمنع التحويل لموقع الموبايل — لأنو ما عندو زر ترجمات
+                    val h = u.host ?: ""
+                    if (h == "m.youtube.com" && !Prefs.desktopMode) {
+                        val fixed = u.toString().replace("//m.youtube.com", "//www.youtube.com")
+                        applyUaFor(fixed)
+                        view?.loadUrl(fixed)
+                        return true
+                    }
+                    return false
+                }
                 return try { startActivity(Intent(Intent.ACTION_VIEW, u)); true } catch (e: Exception) { true }
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 urlBar.setText(url ?: "")
-                currentHost = hostOf(url)
+                val h = hostOf(url)
+                currentHost = h
+                if (h != null && (h.contains("youtube.com") || h.contains("youtu.be")) && !Prefs.desktopMode) {
+                    if (web.settings.userAgentString != UA_DESKTOP) web.settings.userAgentString = UA_DESKTOP
+                }
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
