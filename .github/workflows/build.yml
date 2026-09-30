@@ -1,0 +1,58 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build debug + release APK
+        run: |
+          gradle assembleDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk       out/ImmersiveMe-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk   out/ImmersiveMe-release.apk
+          ls -lh out/
+
+      - name: Upload as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmersiveMe-APK
+          path: out/*.apk
+          retention-days: 90
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Immersive-Me v1.0.${{ github.run_number }}
+          body: |
+            بناء تلقائي — APK جاهز للتنصيب مباشرة على أندرويد.
+            - `ImmersiveMe-debug.apk` — نسخة تجريبية
+            - `ImmersiveMe-release.apk` — نسخة الإصدار
+          files: out/*.apk
+          draft: false
