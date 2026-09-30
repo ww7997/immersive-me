@@ -11,28 +11,26 @@ import java.net.URLEncoder
 
 /**
  * محرّك الترجمة.
- *  - Google المجاني: endpoint عام بلا مفتاح.
+ *  - Google المجاني: منفذ يقبل عدة فقرات بنداء واحد + عنوان متصفّح + إعادة محاولة.
  *  - أي واجهة متوافقة مع OpenAI بمفتاح المستخدم.
  *
- * الدفعات: نربط الفقرات بفاصل نادر، ونطلب الترجمة كلها بنداء واحد.
- * المهل قصيرة عمداً حتى لا تعلق الواجهة، وكل خطأ يُمرَّر للشاشة.
+ * كل خطأ يُمرَّر للشاشة بالعربي — لا فشل صامت.
  */
 object TranslateEngine {
-
-    private const val SEP = "\n@@\n"
-    private val SEP_RE = Regex("""\s*@@\s*""")
-    private const val MAX_BATCH_CHARS = 1600
 
     private const val T_BATCH = 45_000
     private const val T_SINGLE = 25_000
     private const val T_GOOGLE = 20_000
 
-    /** آخر خطأ صار — يظهر بالواجهة */
+    /** عنوان متصفّح حقيقي — بدونه جوجل بتحجب الطلبات بـ 429 */
+    private const val BROWSER_UA =
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+
     @Volatile
     var lastError: String? = null
         private set
 
-    /** عدد الأخطاء المتتالية — إذا زاد عن ٣ نتوقف بدل ما نعلّق الجهاز */
     @Volatile
     private var failStreak = 0
 
@@ -44,114 +42,143 @@ object TranslateEngine {
         return ""
     }
 
-    private fun key(text: String, target: String, providerTag: String): String {
+    private fun ckey(text: String, target: String, tag: String): String {
         var h = 5381L
         for (c in text) h = ((h shl 5) + h + c.code) and 0xFFFFFFFFL
-        return "$target|$providerTag|${h.toString(36)}|${text.length}"
+        return "$target|$tag|${h.toString(36)}|${text.length}"
     }
 
     fun translate(texts: List<String>, target: String): List<String> {
         if (texts.isEmpty()) return emptyList()
-        val provider = Prefs.effectiveProvider()   // ناقص مفتاح؟ → Google المجاني
+        val provider = Prefs.effectiveProvider()
         val tag = provider?.id ?: "google"
 
         val out = arrayOfNulls<String>(texts.size)
-        val pendingIdx = ArrayList<Int>()
-        val pendingTxt = ArrayList<String>()
+        val idxs = ArrayList<Int>()
+        val raws = ArrayList<String>()
 
         texts.forEachIndexed { i, t ->
-            val cached = Prefs.cacheGet(key(t, target, tag))
-            if (cached != null) out[i] = cached
-            else { pendingIdx.add(i); pendingTxt.add(t) }
+            val c = Prefs.cacheGet(ckey(t, target, tag))
+            if (c != null) out[i] = c else { idxs.add(i); raws.add(t) }
         }
+        if (raws.isEmpty()) return out.map { it ?: "" }
 
-        if (pendingTxt.isEmpty()) return out.map { it ?: "" }
-
-        // توقّف مبكر: إذا فشل المزوّد ٣ مرات متتالية، ما نضل نعلّق الواجهة
         if (failStreak >= 3 && provider != null) {
-            lastError = lastError ?: "فشل متكرر من المزوّد"
+            lastError = lastError ?: "فشل متكرر من المزوّد — أُوقف مؤقتاً"
             return out.map { it ?: "" }
         }
 
         val results: List<String> = try {
-            if (provider == null) googleBatch(pendingTxt, target)
-            else aiBatch(pendingTxt, target, provider)
+            if (provider == null) Google.freeBatch(raws, target, ::fail)
+            else aiBatch(raws, target, provider)
         } catch (e: Exception) {
-            val msg = describe(e)
-            lastError = msg
-            failStreak++
-            List(pendingTxt.size) { "" }
+            lastError = describe(e); failStreak++
+            List(raws.size) { "" }
         }
 
-        if (results.size == pendingTxt.size) {
-            var anyOk = false
+        if (results.size == raws.size) {
+            var ok = false
             results.forEachIndexed { i, r ->
-                val idx = pendingIdx[i]
-                out[idx] = r
-                if (r.isNotBlank()) {
-                    anyOk = true
-                    Prefs.cachePut(key(pendingTxt[i], target, tag), r)
-                }
+                out[idxs[i]] = r
+                if (r.isNotBlank()) { ok = true; Prefs.cachePut(ckey(raws[i], target, tag), r) }
             }
-            if (anyOk) { failStreak = 0; lastError = null }
+            if (ok) { failStreak = 0; lastError = null }
         }
-
         return out.map { it ?: "" }
     }
 
-    private fun describe(e: Exception): String {
+    internal fun describe(e: Exception): String {
         val m = e.message ?: e.javaClass.simpleName
         return when {
-            m.contains("HTTP 401") || m.contains("401") -> "المفتاح مرفوض (401) — تأكد من الـ API Key"
-            m.contains("HTTP 402") -> "رصيد المزوّد خلص (402)"
-            m.contains("HTTP 403") -> "ممنوع (403) — المفتاح بلا صلاحية أو الموديل غير متاح"
-            m.contains("HTTP 404") -> "الموديل أو العنوان غير موجود (404)"
-            m.contains("HTTP 429") -> "تجاوزت حدّ الطلبات (429) — استنّى شوي"
+            m.contains("401") -> "المفتاح مرفوض (401) — تأكد من الـ API Key"
+            m.contains("402") -> "رصيد المزوّد خلص (402)"
+            m.contains("403") -> "ممنوع (403) — المفتاح بلا صلاحية أو الموديل غير متاح"
+            m.contains("404") -> "الموديل أو العنوان غير موجود (404)"
+            m.contains("429") -> "المزوّد بيرفض الطلبات (429) — جرّب بعد شوي"
             m.contains("HTTP 5") -> "خطأ من سيرفر المزوّد"
-            m.contains("timeout") || m.contains("Timeout") -> "انتهت المدة — المزوّد بطيء"
-            else -> m.take(140)
+            m.contains("timeout", true) -> "انتهت المدة — المزوّد بطيء"
+            else -> m.take(150)
         }
     }
 
-    // ================= Google المجاني =================
+    /* ==================== Google المجاني ==================== */
+    object Google {
 
-    private fun googleOne(text: String, target: String): String {
-        val body = "client=gtx&sl=auto&tl=" + enc(target) + "&dt=t&q=" + enc(text)
-        val res = httpPost(
-            "https://translate.googleapis.com/translate_a/single",
-            body.toByteArray(Charsets.UTF_8),
-            mapOf("Content-Type" to "application/x-www-form-urlencoded;charset=UTF-8"),
-            T_GOOGLE
-        )
-        return parseGoogle(res)
-    }
+        /** عدة فقرات بنداء واحد — بلا فواصل، الجواب مصفوفة مباشرة */
+        fun freeBatch(texts: List<String>, target: String, onFail: (String) -> String): List<String> {
+            if (texts.size == 1) return listOf(one(texts[0], target, onFail))
 
-    private fun parseGoogle(raw: String): String {
-        val arr = JSONArray(raw)
-        val segs = arr.getJSONArray(0)
-        val sb = StringBuilder()
-        for (i in 0 until segs.length()) {
-            val seg = segs.optJSONArray(i) ?: continue
-            sb.append(seg.optString(0, ""))
+            // نداء واحد بعدة q
+            try {
+                return multi(texts, target)
+            } catch (e: Exception) {
+                // منفذ متعدد فشل → نرجع للمنفذ القديم بنفس الطريقة
+                try {
+                    return multiOld(texts, target)
+                } catch (e2: Exception) {
+                    // خطة أخيرة: مقطع-مقطع
+                    return texts.map { t ->
+                        try { one(t, target, onFail) } catch (e3: Exception) { onFail(describe(e3)) }
+                    }
+                }
+            }
         }
-        return sb.toString().trim()
-    }
 
-    private fun googleBatch(texts: List<String>, target: String): List<String> {
-        if (texts.size == 1) return listOf(googleOne(texts[0], target))
-        val joined = texts.joinToString(SEP)
-        if (joined.length > MAX_BATCH_CHARS) {
-            val result = ArrayList<String>(texts.size)
-            texts.chunked(6).forEach { chunk -> result.addAll(googleBatch(chunk, target)) }
-            return result
+        private fun multi(texts: List<String>, target: String): List<String> {
+            val sb = StringBuilder(URL_ALT).append("&sl=auto&tl=").append(enc(target))
+            texts.forEach { sb.append("&q=").append(enc(it)) }
+            val raw = httpGet(sb.toString(), T_GOOGLE)
+            val arr = JSONArray(raw)
+
+            val res = ArrayList<String>(texts.size)
+            if (arr.length() > 0 && arr.opt(0) is JSONArray) {
+                for (i in 0 until arr.length()) {
+                    val row = arr.optJSONArray(i) ?: continue
+                    res.add(row.optString(0, ""))
+                }
+            } else if (arr.length() > 0 && arr.opt(0) is String) {
+                res.add(arr.optString(0, ""))
+            }
+            if (res.size != texts.size) throw RuntimeException("رد غير متوقّع من Google (${res.size}/${texts.size})")
+            return res
         }
-        val translated = googleOne(joined, target)
-        val parts = translated.split(SEP_RE).map { it.trim() }
-        if (parts.size == texts.size) return parts
-        return texts.map { t -> try { googleOne(t, target) } catch (e: Exception) { fail(describe(e)) } }
+
+        private fun one(text: String, target: String, onFail: (String) -> String): String {
+            try {
+                val sb = StringBuilder(URL_ALT).append("&sl=auto&tl=").append(enc(target))
+                    .append("&q=").append(enc(text))
+                val raw = httpGet(sb.toString(), T_GOOGLE)
+                val arr = JSONArray(raw)
+                if (arr.length() > 0 && arr.opt(0) is JSONArray) return arr.getJSONArray(0).optString(0, "").trim()
+                if (arr.length() > 0) return arr.optString(0, "").trim()
+                throw RuntimeException("رد فارغ من Google")
+            } catch (e: Exception) {
+                return onFail(describe(e))
+            }
+        }
+
+        private const val URL_ALT = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex"
+
+        /** منفذ احتياطي: translate_a/single مع فصل بـ @@ */
+        private fun multiOld(texts: List<String>, target: String): List<String> {
+            val joined = texts.joinToString("\n@@\n")
+            val body = "client=gtx&sl=auto&tl=" + enc(target) + "&dt=t&q=" + enc(joined)
+            val raw = httpPost(
+                "https://translate.googleapis.com/translate_a/single",
+                body.toByteArray(Charsets.UTF_8),
+                mapOf("Content-Type" to "application/x-www-form-urlencoded;charset=UTF-8"),
+                T_GOOGLE
+            )
+            val arr = JSONArray(raw); val segs = arr.getJSONArray(0)
+            val sb = StringBuilder()
+            for (i in 0 until segs.length()) sb.append(segs.optJSONArray(i)?.optString(0, "") ?: "")
+            val parts = sb.toString().trim().split(Regex("""\s*@@\s*""")).map { it.trim() }
+            if (parts.size != texts.size) throw RuntimeException("رد غير متوقّع (${parts.size}/${texts.size})")
+            return parts
+        }
     }
 
-    // ================= الذكاء الاصطناعي =================
+    /* ==================== الذكاء الاصطناعي ==================== */
 
     private fun aiOne(text: String, target: String, p: Provider): String {
         val prompt = "Translate the following text into $target.\n" +
@@ -170,18 +197,14 @@ object TranslateEngine {
         prompt.append("number in square brackets followed by a space, e.g. `[1] ...`. ")
         prompt.append("Do not merge, split, reorder or skip any block. Output no other text.\n\n")
         texts.forEachIndexed { i, t ->
-            prompt.append("[").append(i + 1).append("] ")
-                .append(t.replace("\n", " ").trim()).append("\n")
+            prompt.append("[").append(i + 1).append("] ").append(t.replace("\n", " ").trim()).append("\n")
         }
 
         val out: String = try {
             aiCall(p, prompt.toString(), T_BATCH).trim()
         } catch (e: Exception) {
-            // الدفعة فشلت → نرجع لمقطع-مقطع (بمهلة قصيرة)
             lastError = describe(e)
-            return texts.map { t ->
-                try { aiOne(t, target, p) } catch (e2: Exception) { fail(describe(e2)) }
-            }
+            return texts.map { t -> try { aiOne(t, target, p) } catch (e2: Exception) { fail(describe(e2)) } }
         }
 
         val res = arrayOfNulls<String>(n)
@@ -190,15 +213,12 @@ object TranslateEngine {
             if (l.isEmpty()) continue
             val m = Regex("""^\[?(\d+)\]?[.:)]?\s+(.*)$""").find(l)
             if (m != null) {
-                val idx = m.groupValues[1].toIntOrNull()
-                if (idx != null && idx in 1..n) { res[idx - 1] = m.groupValues[2].trim(); continue }
+                val ix = m.groupValues[1].toIntOrNull()
+                if (ix != null && ix in 1..n) { res[ix - 1] = m.groupValues[2].trim(); continue }
             }
         }
         if (res.any { it == null }) {
-            // تعذّر التحليل → مقطع-مقطع
-            return texts.map { t ->
-                try { aiOne(t, target, p) } catch (e: Exception) { fail(describe(e)) }
-            }
+            return texts.map { t -> try { aiOne(t, target, p) } catch (e: Exception) { fail(describe(e)) } }
         }
         return res.map { (it ?: "").replace(Regex("""^\[?\d+\]?[.:)]?\s+"""), "").trim() }
     }
@@ -227,7 +247,7 @@ object TranslateEngine {
         val raw = httpPost(url, body.toString().toByteArray(Charsets.UTF_8), headers, timeoutMs)
         val j = JSONObject(raw)
 
-        if (j.has("error")) {
+        if (j.has("error") && !j.isNull("error")) {
             val err = j.optJSONObject("error")
             val msg = err?.optString("message") ?: j.opt("error").toString()
             throw RuntimeException("HTTP ${err?.optInt("code") ?: "?"}: $msg")
@@ -236,10 +256,7 @@ object TranslateEngine {
         val msg = j.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
         var content: String = msg?.optString("content", "") ?: ""
         if (content.isBlank()) content = j.optJSONArray("choices")?.optJSONObject(0)?.optString("text", "") ?: ""
-        if (content.isBlank()) {
-            val fr = msg?.optString("reasoning", "") ?: ""
-            if (fr.isNotBlank()) content = fr
-        }
+        if (content.isBlank()) content = msg?.optString("reasoning", "") ?: ""
         if (content.isBlank()) throw RuntimeException("رد فارغ من المزوّد — جرّب موديل تاني")
 
         content = content.replace(Regex("""(?s)Thinking\.\.\..*?\.\.\.done thinking\."""), "")
@@ -247,33 +264,71 @@ object TranslateEngine {
         return content.trim()
     }
 
-    // ================= HTTP =================
+    /* ==================== HTTP ==================== */
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+
+    /** إعادة محاولة على 429 وأخطاء السيرفر */
+    private inline fun withRetry(block: () -> String): String {
+        val delays = longArrayOf(700L, 1800L, 3500L)
+        var last: Exception? = null
+        for (attempt in 0..delays.size) {
+            try {
+                return block()
+            } catch (e: Exception) {
+                last = e
+                val m = e.message ?: ""
+                val retriable = m.contains("429") || m.contains("HTTP 5")
+                if (!retriable || attempt == delays.size) throw e
+                try { Thread.sleep(delays[attempt]) } catch (ie: InterruptedException) {}
+            }
+        }
+        throw last ?: RuntimeException("فشل")
+    }
+
+    private fun httpGet(urlStr: String, timeoutMs: Int): String = withRetry {
+        open(urlStr, timeoutMs).use2 { conn ->
+            val code = conn.responseCode
+            val text = read(conn, code)
+            if (code !in 200..299) throw RuntimeException("HTTP $code: " + text.take(220))
+            text
+        }
+    }
 
     private fun httpPost(
         urlStr: String,
         body: ByteArray,
         headers: Map<String, String>,
         timeoutMs: Int
-    ): String {
-        val conn = URL(urlStr).openConnection() as HttpURLConnection
-        try {
+    ): String = withRetry {
+        open(urlStr, timeoutMs).use2 { conn ->
             conn.requestMethod = "POST"
             conn.doOutput = true
-            conn.connectTimeout = 12000
-            conn.readTimeout = timeoutMs
-            conn.instanceFollowRedirects = true
             headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
             conn.outputStream.use { os: OutputStream -> os.write(body) }
-
             val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else (conn.errorStream ?: conn.inputStream)
-            val text = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+            val text = read(conn, code)
             if (code !in 200..299) throw RuntimeException("HTTP $code: " + text.take(220))
-            return text
-        } finally {
-            conn.disconnect()
+            text
         }
+    }
+
+    private fun open(urlStr: String, timeoutMs: Int): HttpURLConnection {
+        val c = URL(urlStr).openConnection() as HttpURLConnection
+        c.connectTimeout = 12000
+        c.readTimeout = timeoutMs
+        c.instanceFollowRedirects = true
+        c.setRequestProperty("User-Agent", BROWSER_UA)
+        c.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+        return c
+    }
+
+    private fun read(conn: HttpURLConnection, code: Int): String {
+        val stream = if (code in 200..299) conn.inputStream else (conn.errorStream ?: conn.inputStream)
+        return BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+    }
+
+    private inline fun <T> HttpURLConnection.use2(block: (HttpURLConnection) -> T): T {
+        try { return block(this) } finally { disconnect() }
     }
 }
