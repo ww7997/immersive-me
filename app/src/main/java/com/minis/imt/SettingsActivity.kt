@@ -523,6 +523,7 @@ class SettingsActivity : AppCompatActivity() {
             SLOW.containsMatchIn(m) -> "🐢 "
             else -> "   "
         }
+        val list = android.widget.ListView(this)
         val data = ArrayList(models.map { mark(it) + it })
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, data)
         list.adapter = adapter
