@@ -491,8 +491,35 @@ class MainActivity : AppCompatActivity() {
         })
 
         title("محرّك الترجمة")
+        val engGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
+        listOf(
+            "fast" to "⚡ سريع (مجاني)",
+            "auto" to "⚙️ تلقائي",
+            "quality" to "🎯 دقيق (مفتاحك)"
+        ).forEach { (code, lbl) ->
+            engGroup.addView(Chip(this).apply {
+                text = lbl
+                textSize = 12f
+                isCheckable = true
+                isChecked = Prefs.engineMode == code
+                setOnClickListener {
+                    Prefs.engineMode = code
+                    snack(if (code == "fast") "⚡ وضع سريع — جوجل، بلا مفتاح، فوري"
+                          else if (code == "quality") "🎯 وضع دقيق — " + Prefs.effectiveName()
+                          else "⚙️ تلقائي — " + Prefs.effectiveName())
+                    if (Prefs.enabled) {
+                        applyLangChange()
+                    }
+                    sheet.dismiss()
+                }
+            })
+        }
+        root.addView(engGroup)
+
         root.addView(TextView(this).apply {
-            text = Prefs.effectiveName(); setTextColor(C_BRAND); textSize = 14f
+            text = "الحالي: " + Prefs.effectiveName()
+            setTextColor(C_BRAND); textSize = 13f
+            setPadding(0, dp(10), 0, 0)
         })
         root.addView(MaterialButton(this).apply {
             text = "إدارة المفاتيح والمحرّكات"; textSize = 13f

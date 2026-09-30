@@ -108,7 +108,10 @@
     if (repTimer) return;
     repTimer = setTimeout(function () {
       repTimer = null;
-      try { if (ImtNative && ImtNative.status) ImtNative.status(stats.done, stats.total); } catch (e) {}
+      var pending = queue.length + inflight * (BATCH || 5);
+      try {
+        if (ImtNative && ImtNative.status) ImtNative.status(stats.done, stats.done + pending);
+      } catch (e) {}
     }, 250);
   }
 
@@ -171,7 +174,7 @@
     try {
       var r = el.getBoundingClientRect();
       var vh = window.innerHeight || 800;
-      return r.bottom > -1400 && r.top < vh + 1400;
+      return r.bottom > -900 && r.top < vh + 900;
     } catch (e) { return true; }
   }
 

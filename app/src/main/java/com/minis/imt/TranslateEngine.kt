@@ -50,7 +50,7 @@ object TranslateEngine {
 
     fun translate(texts: List<String>, target: String): List<String> {
         if (texts.isEmpty()) return emptyList()
-        val provider = Prefs.effectiveProvider()
+        val provider = Prefs.chosenProvider()   // حسب الوضع المختار
         val tag = provider?.id ?: "google"
 
         val out = arrayOfNulls<String>(texts.size)

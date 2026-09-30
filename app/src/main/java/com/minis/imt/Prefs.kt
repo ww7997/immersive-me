@@ -143,6 +143,18 @@ object Prefs {
         get() = sp.getInt("concOv", 0)
         set(v) = sp.edit().putInt("concOv", v).apply()
 
+    /** محرّك الترجمة: auto | fast | quality */
+    var engineMode: String
+        get() = sp.getString("engineMode", "auto")!!
+        set(v) = sp.edit().putString("engineMode", v).apply()
+
+    /** يعيد المزوّد المطلوب حسب الوضع — null يعني Google المجاني (الأسرع) */
+    fun chosenProvider(): Provider? = when (engineMode) {
+        "fast" -> null                       // ⚡ جوجل دائماً — أسرع بعشرات المرات
+        "quality" -> effectiveProvider()     // 🎯 المفتاح إن وُجد
+        else -> effectiveProvider()          // تلقائي: مفتاح إن وُجد، وإلا جوجل
+    }
+
     // ---------- سجل الصفحات ----------
     var history: MutableList<Pair<String, String>>
         get() {
@@ -209,10 +221,12 @@ object Prefs {
 
     /** اسم المحرّك المستخدَم فعلاً — مع تنبيه إذا المزوّد ناقص */
     fun effectiveName(): String {
-        if (effectiveProvider() != null) return effectiveProvider()!!.name
+        val chosen = chosenProvider()
+        if (chosen != null) return chosen.name
+        if (engineMode == "fast") return "⚡ جوجل (سريع)"
         val a = activeProvider()
-        return if (a == null) "Google (مجاني)"
-        else "Google (مجاني) ← «${a.name}» بلا مفتاح"
+        return if (a == null) "⚡ جوجل (سريع)"
+        else "⚡ جوجل (سريع) ← «${a.name}» بلا مفتاح"
     }
 
     // ---------- الكاش ----------
