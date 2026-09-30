@@ -267,7 +267,7 @@ class MainActivity : AppCompatActivity() {
                 setCardBackgroundColor(C_SURFACE)
                 cardElevation = 0f
                 strokeWidth = dp(1)
-                strokeColor = ColorStateList.valueOf(C_SURFACE2)
+                setStrokeColor(ColorStateList.valueOf(C_SURFACE2))
                 val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 lp.setMargins(dp(4), 0, dp(4), 0)
                 layoutParams = lp

@@ -87,7 +87,7 @@ class SettingsActivity : AppCompatActivity() {
             setCardBackgroundColor(Color.parseColor(C_SURFACE))
             cardElevation = 0f
             strokeWidth = dp(1)
-            strokeColor = ColorStateList.valueOf(Color.parseColor(C_SURFACE2))
+            setStrokeColor(ColorStateList.valueOf(Color.parseColor(C_SURFACE2)))
             setContentPadding(dp(16), dp(16), dp(16), dp(18))
             addView(box)
         }
