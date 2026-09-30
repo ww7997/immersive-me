@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private val UA_DESKTOP = UA.replace(" Mobile", "")
 
     private var ytFixAt = 0L
+    private var destroyed = false
 
     /** يختار وكيل المستخدم — وضع سطح المكتب صار خيار المستخدم فقط */
     private fun applyUaFor(url: String?) {
@@ -747,8 +748,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        main.removeCallbacksAndMessages(null)      // نلغي أي مهام معلّقة قبل التدمير
         Prefs.flushCache()
-        pool.shutdownNow()
+        pool.shutdown()                            // إنهاء لطيف بدل shutdownNow
+        try { web.stopLoading() } catch (e: Exception) {}
+        web.removeJavascriptInterface("ImtNative")
         web.destroy()
         super.onDestroy()
     }
@@ -779,6 +784,8 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun translate(id: String, textsJson: String) {
+            // حماية: حدّ أقصى للطلبات — صفحة خبيثة ما تقدر تحرق رصيد المفتاح
+            if (!rateOk()) { reply(id, "[]"); return }
             val texts: List<String> = try {
                 val a = JSONArray(textsJson)
                 List(a.length()) { a.getString(it) }
@@ -856,19 +863,36 @@ class MainActivity : AppCompatActivity() {
         fun log(msg: String) = Log.d("IMT-JS", msg)
     }
 
+    private val callTimes = ArrayDeque<Long>()
+
+    /** ١٥٠ طلب بالدقيقة كحد أقصى — يمنع أي صفحة من استنزاف رصيد المفتاح */
+    private fun rateOk(): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        synchronized(callTimes) {
+            while (callTimes.isNotEmpty() && now - callTimes.first() > 60_000) callTimes.removeFirst()
+            if (callTimes.size >= 150) return false
+            callTimes.addLast(now)
+            return true
+        }
+    }
+
     private fun reply(id: String, json: String) {
+        if (destroyed) return                       // ما نلمس WebView بعد التدمير
         main.post {
+            if (destroyed) return@post
             val js = "window.__imtCallback(" + JSONObject.quote(id) + "," + JSONObject.quote(json) + ")"
-            web.evaluateJavascript(js, null)
+            try { web.evaluateJavascript(js, null) } catch (e: Exception) {}
         }
     }
 
     /** نتيجة مقطع واحد وصلت من البثّ — نعرضها فوراً */
     private fun replyPartial(id: String, index: Int, text: String) {
+        if (destroyed) return
         main.post {
+            if (destroyed) return@post
             val js = "window.__imtPartial(" + JSONObject.quote(id) + "," + index + "," +
                      JSONObject.quote(text) + ")"
-            web.evaluateJavascript(js, null)
+            try { web.evaluateJavascript(js, null) } catch (e: Exception) {}
         }
     }
 }

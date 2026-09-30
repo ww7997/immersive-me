@@ -56,9 +56,17 @@ object Prefs {
     private lateinit var sp: SharedPreferences
     private var cacheFile: File? = null
 
-    /** ذاكرة ترجمة مؤقتة داخل الجلسة */
-    private val memCache = LinkedHashMap<String, String>(1024, 0.75f, true)
+    /** ذاكرة ترجمة مؤقتة داخل الجلسة — آمنة للخيوط مع إخلاء LRU تلقائي */
+    private val memCache = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, String>(1024, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>) =
+                size > MAX_MEM
+        }
+    )
     private var cacheDirty = false
+    private val ioPool = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "imt-cache").apply { isDaemon = true }
+    }
 
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("imt", Context.MODE_PRIVATE)
@@ -251,20 +259,24 @@ object Prefs {
             }
         } catch (_: Exception) {}
     }
-
     fun flushCache() {
         if (!cacheDirty) return
         cacheDirty = false
-        try {
-            val arr = JSONArray()
-            val entries = memCache.entries.toList()          // Set ← List أولاً
+        val snapshot: List<Pair<String, String>>
+        synchronized(memCache) {
+            val entries = memCache.entries.toList()
             val from = if (entries.size > MAX_PERSIST) entries.size - MAX_PERSIST else 0
-            for (i in from until entries.size) {
-                val e = entries[i]
-                arr.put(JSONObject().put("k", e.key).put("v", e.value))
-            }
-            cacheFile?.writeText(arr.toString())
-        } catch (_: Exception) {}
+            snapshot = entries.subList(from, entries.size).map { it.key to it.value }
+        }
+        val f = cacheFile ?: return
+        // الكتابة على خيط خلفي — منشان ما نعلّق الواجهة (ANR)
+        ioPool.execute {
+            try {
+                val arr = JSONArray()
+                snapshot.forEach { arr.put(JSONObject().put("k", it.first).put("v", it.second)) }
+                f.writeText(arr.toString())
+            } catch (_: Exception) {}
+        }
     }
 
     fun clearCache() {
@@ -278,17 +290,8 @@ object Prefs {
     fun cacheGet(key: String): String? = memCache[key]
 
     fun cachePut(key: String, value: String) {
-        memCache[key] = value
+        memCache[key] = value          // الإخلاء صار تلقائي بـ removeEldestEntry
         cacheDirty = true
-        if (memCache.size > MAX_MEM) {
-            val iter = memCache.keys.iterator()          // ← مو "it" (كان متظلّل بـ repeat)
-            var drop = memCache.size - MAX_PERSIST
-            while (drop > 0 && iter.hasNext()) {
-                iter.next()
-                iter.remove()
-                drop--
-            }
-        }
     }
 
     private const val MAX_MEM = 5000
