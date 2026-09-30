@@ -399,12 +399,12 @@ class MainActivity : AppCompatActivity() {
         if (Prefs.enabled) {
             fabTr.text = "مترجم ✓"
             fabTr.backgroundTintList = ColorStateList.valueOf(C_OK)
-            fabTr.imageTintList = ColorStateList.valueOf(Color.parseColor("#062516"))
+            fabTr.setIconTint(ColorStateList.valueOf(Color.parseColor("#062516")))
             fabTr.setTextColor(Color.parseColor("#062516"))
         } else {
             fabTr.text = "ترجمة"
             fabTr.backgroundTintList = ColorStateList.valueOf(C_SURFACE2)
-            fabTr.imageTintList = ColorStateList.valueOf(C_MUTED)
+            fabTr.setIconTint(ColorStateList.valueOf(C_MUTED))
             fabTr.setTextColor(C_MUTED)
         }
         tvChip.text = Prefs.target.uppercase()
