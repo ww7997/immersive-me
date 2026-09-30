@@ -57,8 +57,8 @@
     '  display:inline-block;padding:2px 10px;background:rgba(0,0,0,.45);border-radius:8px;',
     '  text-shadow:0 1px 4px #000;}',
     '.imt-subs.only .s1{display:none;}',
-    /* نخفي ترجمات يوتيوب الأصلية لمّا نشتغل — منشان ما يتكرّرو */
-    'html.imt-yt .ytp-caption-window-container{display:none !important;}'
+    /* نخفي ترجمات يوتيوب الأصلية بدون ما نوقفها — نقرأ منها */
+    'html.imt-yt .ytp-caption-window-container{opacity:0 !important;}'
   ].join('\n');
 
   function injectCSS() {
@@ -605,7 +605,8 @@
   var YT = {
     cues: [], ov: null, el1: null, el2: null, lastIdx: -2, timer: null,
     loaded: false, loading: false, waiting: {}, seq: 0,
-    live: false, tries: 0, ccClicked: false, liveLast: '', liveCache: {}
+    live: false, tries: 0, ccClicked: false, liveLast: '', liveCache: {},
+    map: {}, pending: {}, livePending: {}, hitIdx: -1, lastShown: '', lastHref: ''
   };
 
   function isYouTube() {
@@ -700,7 +701,8 @@
   function ytReset() {
     YT.cues = []; YT.loaded = false; YT.loading = false; YT.live = false;
     YT.lastIdx = -2; YT.waiting = {}; YT.tries = 0; YT.ccClicked = false;
-    YT.liveLast = ''; YT.liveCache = {};
+    YT.liveLast = ''; YT.liveCache = {}; YT.map = {}; YT.pending = {};
+    YT.livePending = {}; YT.hitIdx = -1; YT.lastShown = '';
     document.documentElement.classList.remove('imt-yt');
     if (YT.ov) { YT.ov.remove(); YT.ov = null; }
   }
@@ -736,6 +738,7 @@
     YT.live = false;
     document.documentElement.classList.add('imt-yt');
     showBadge('✓ ' + YT.cues.length + ' سطر مترجم');
+    ytBuildMap();
     ytTranslateCues();
   }
 
@@ -783,58 +786,137 @@
     if (YT.ov) YT.ov.style.display = show ? 'block' : 'none';
   }
 
+  function ytNorm(s) {
+    return String(s || '').toLowerCase()
+      .replace(/[\u2018\u2019\u201C\u201D]/g, '')
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+
+  /** يبني خريطة نص → ترجمة بعد ما تخلص الترجمة المسبقة */
+  function ytBuildMap() {
+    YT.map = {};
+    for (var i = 0; i < YT.cues.length; i++) {
+      var n = YT.cues[i].n || (YT.cues[i].n = ytNorm(YT.cues[i].t));
+      if (n && YT.map[n] == null) YT.map[n] = i;
+    }
+  }
+
+  /**
+   * يدوّر ترجمة النص اللي يوتيوب عم يعرضو.
+   * يبحث أول بمحيط آخر موضع (سريع)، وإذا فشل → بحث كامل.
+   */
+  function ytLookup(shown) {
+    var k = ytNorm(shown);
+    if (!k || k.length < 2) return null;
+    var n = YT.cues.length;
+    var around = YT.hitIdx >= 0 ? YT.hitIdx : 0;
+
+    for (var pass = 0; pass < 3; pass++) {
+      var a, b;
+      if (pass === 0) { a = Math.max(0, around - 15); b = Math.min(n, around + 45); }
+      else if (pass === 1) { a = 0; b = Math.min(n, 400); }
+      else { a = 0; b = n; }
+      for (var i = a; i < b; i++) {
+        var c = YT.cues[i];
+        if (!c) continue;
+        var t = c.n || (c.n = ytNorm(c.t));
+        if (!t) continue;
+        if (t === k) return { i: i, tr: c.tr };
+        // تطابق جزئي: واحد بيحتوي التاني
+        if (t.length > 6 && k.length > 6 && (t.indexOf(k) >= 0 || k.indexOf(t) >= 0)) {
+          return { i: i, tr: c.tr };
+        }
+      }
+      if (pass === 0 && n <= 400) break;
+    }
+    return null;
+  }
+
+  function ytSetText(tr, orig) {
+    if (!YT.ov) return;
+    YT.ov.style.display = 'block';
+    if (CFG.subs === 'both' && orig != null) { YT.el1.textContent = orig; }
+    YT.el2.textContent = tr || '…';
+  }
+
   function ytTick() {
     if (!running) return;
+
+    /* ---- التحميل والبدائل ---- */
     if (!YT.loaded && !YT.live) {
       if (!YT.ccClicked && YT.tries % 8 === 0) YT.ccClicked = ytEnableCC();
       if (YT.tries % 6 === 0) {
-        var c = ytCuesFromTrack();            // الطريقة ٢
-        if (c) { ytLoadCues(c); }
+        var c = ytCuesFromTrack();
+        if (c) ytLoadCues(c);
       }
       YT.tries++;
-      if (YT.tries > 160 && !YT.live) {       // ~٢٠ ثانية → الوضع المباشر (الطريقة ٣)
+      if (YT.tries > 200 && !YT.live) {
         YT.live = true;
         document.documentElement.classList.add('imt-yt');
-        showBadge('وضع الحفظ المباشر — ترجمة لحظية');
+        showBadge('وضع مباشر — ترجمة لحظية');
       }
       return;
     }
+
     if (!document.querySelector('video')) return;
     ytEnsureOverlay();
 
-    if (YT.loaded) {
-      var v = document.querySelector('video');
-      var idx = -1;
-      var ms = v.currentTime * 1000;
-      for (var i = 0; i < YT.cues.length; i++) {
-        if (ms >= YT.cues[i].s && ms < YT.cues[i].e) { idx = i; break; }
+    /* ---- الطريقة الأقوى: نتبع اللي يوتيوب عم يعرضو (مزامنة مثالية مع الصوت) ---- */
+    var shown = ytLiveText();
+    if (shown && shown !== YT.lastShown) {
+      YT.lastShown = shown;
+      var hit = YT.loaded ? ytLookup(shown) : null;
+      if (hit) {
+        YT.hitIdx = hit.i;
+        if (hit.tr) { ytSetText(hit.tr, shown); return; }      // ✓ ترجمة جاهزة — فورية
+        // مقطع موجود بس الترجمة لسا ما وصلت
+        ytSetText("\u2026", shown);
+        if (!YT.pending[hit.i]) {
+          YT.pending[hit.i] = 1;
+          (function (idx) {
+            bridgeTranslate([YT.cues[idx].t]).then(function (r) {
+              var t = ((r && r[0]) || '').trim();
+              delete YT.pending[idx];
+              if (t) { YT.cues[idx].tr = t; if (YT.lastShown && ytNorm(YT.lastShown) === YT.cues[idx].n) ytSetText(t); }
+            })['catch'](function () { delete YT.pending[idx]; });
+          })(hit.i);
+        }
+        return;
       }
-      if (idx === YT.lastIdx) return;
-      YT.lastIdx = idx;
-      if (idx < 0) { ytHide(false); return; }
-      ytHide(true);
-      YT.el1.textContent = YT.cues[idx].t;
-      YT.el2.textContent = YT.cues[idx].tr || '…';
+      // ما لقيناه بالمقاطع → نترجم لحظياً
+      var cached = YT.liveCache[shown];
+      if (cached) { ytSetText(cached, shown); return; }
+      ytSetText("\u2026", shown);
+      if (!YT.livePending[shown]) {
+        YT.livePending[shown] = 1;
+        (function (key) {
+          bridgeTranslate([key]).then(function (r) {
+            var t = ((r && r[0]) || '').trim();
+            delete YT.livePending[key];
+            if (t) {
+              YT.liveCache[key] = t;
+              if (YT.lastShown === key) ytSetText(t, key);
+            }
+          })['catch'](function () { delete YT.livePending[key]; });
+        })(shown);
+      }
       return;
     }
 
-    // الوضع المباشر
-    var txt = ytLiveText();
-    if (txt === YT.liveLast) return;
-    YT.liveLast = txt;
-    if (!txt) { ytHide(false); return; }
-    ytHide(true);
-    YT.el1.textContent = txt;
-    YT.el2.textContent = YT.liveCache[txt] || '…';
-    if (YT.liveCache[txt]) return;
-    (function (key) {
-      bridgeTranslate([key]).then(function (r) {
-        var t = ((r && r[0]) || '').trim();
-        if (!t) return;
-        YT.liveCache[key] = t;
-        if (YT.liveLast === key && YT.el2) YT.el2.textContent = t;
-      })['catch'](function () {});
-    })(txt);
+    /* ---- خطة بديلة: لو يوتيوب ما عم يعرض شي، نستعمل توقيت الملف ---- */
+    if (!YT.loaded || shown) return;
+    var v = document.querySelector('video');
+    var ms = v.currentTime * 1000;
+    var idx = -1;
+    for (var i = 0; i < YT.cues.length; i++) {
+      var cu = YT.cues[i];
+      if (ms >= cu.s && ms < cu.e) { idx = i; break; }
+    }
+    if (idx === YT.lastIdx) return;
+    YT.lastIdx = idx;
+    if (idx < 0) { ytHide(false); return; }
+    ytSetText(YT.cues[idx].tr, YT.cues[idx].t);
   }
 
   function ytStart() {
