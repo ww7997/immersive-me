@@ -1,13 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
-        <item name="android:colorPrimary">#1B1D22</item>
-        <item name="android:colorPrimaryDark">#12141A</item>
-        <item name="android:colorAccent">#6E96FF</item>
-        <item name="android:windowBackground">#12141A</item>
-        <item name="android:statusBarColor">#12141A</item>
-        <item name="android:navigationBarColor">#12141A</item>
-        <item name="android:textColorPrimary">#E8EAED</item>
-        <item name="android:textColorSecondary">#8A93A6</item>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="AppTheme" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/brand</item>
+        <item name="colorOnPrimary">#0B1020</item>
+        <item name="colorPrimaryContainer">@color/brand_dim</item>
+        <item name="colorOnPrimaryContainer">@color/on_surface</item>
+        <item name="colorSecondary">@color/ok</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorSurfaceVariant">@color/surface2</item>
+        <item name="colorOnSurfaceVariant">@color/muted</item>
+        <item name="colorOutline">@color/surface3</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:textColorPrimary">@color/on_surface</item>
+        <item name="android:textColorSecondary">@color/muted</item>
+        <item name="materialAlertDialogTheme">@style/ImtDialog</item>
     </style>
+
+    <style name="ImtDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/surface2</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+    </style>
+
+    <style name="ImtIconButton">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:padding">10dp</item>
+        <item name="tint">@color/muted</item>
+    </style>
+
 </resources>

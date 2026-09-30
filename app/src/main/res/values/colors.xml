@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#1B1D22</color>
+    <color name="bg">#0D1015</color>
+    <color name="surface">#161A21</color>
+    <color name="surface2">#1F242D</color>
+    <color name="surface3">#272D38</color>
+    <color name="brand">#7BA0FF</color>
+    <color name="brand_dim">#3A4A78</color>
+    <color name="on_surface">#E7EAF2</color>
+    <color name="muted">#8B94A7</color>
+    <color name="ok">#46D68C</color>
+    <color name="warn">#FFB74D</color>
+    <color name="err">#FF6B6B</color>
+    <color name="ic_launcher_background">#161A21</color>
 </resources>
