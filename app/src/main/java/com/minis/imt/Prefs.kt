@@ -159,8 +159,11 @@ object Prefs {
         cacheDirty = false
         try {
             val arr = JSONArray()
-            memCache.entries.takeLast(4000).forEach { (k, v) ->
-                arr.put(JSONObject().put("k", k).put("v", v))
+            val entries = memCache.entries.toList()          // Set ← List أولاً
+            val from = if (entries.size > MAX_PERSIST) entries.size - MAX_PERSIST else 0
+            for (i in from until entries.size) {
+                val e = entries[i]
+                arr.put(JSONObject().put("k", e.key).put("v", e.value))
             }
             cacheFile?.writeText(arr.toString())
         } catch (_: Exception) {}
@@ -179,9 +182,17 @@ object Prefs {
     fun cachePut(key: String, value: String) {
         memCache[key] = value
         cacheDirty = true
-        if (memCache.size > 5000) {
-            val it = memCache.keys.iterator()
-            repeat(memCache.size - 4000) { if (it.hasNext()) { it.next(); it.remove() } }
+        if (memCache.size > MAX_MEM) {
+            val iter = memCache.keys.iterator()          // ← مو "it" (كان متظلّل بـ repeat)
+            var drop = memCache.size - MAX_PERSIST
+            while (drop > 0 && iter.hasNext()) {
+                iter.next()
+                iter.remove()
+                drop--
+            }
         }
     }
+
+    private const val MAX_MEM = 5000
+    private const val MAX_PERSIST = 4000
 }

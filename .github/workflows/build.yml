@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -27,18 +27,21 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Build debug + release APK
+      - name: Build APK
         run: |
-          gradle assembleDebug assembleRelease --no-daemon --stacktrace
+          set -o pipefail
+          gradle assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/build.log
 
       - name: Collect APKs
+        if: success()
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/debug/app-debug.apk       out/ImmersiveMe-debug.apk
-          cp app/build/outputs/apk/release/app-release.apk   out/ImmersiveMe-release.apk
+          cp app/build/outputs/apk/debug/app-debug.apk    out/ImmersiveMe-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk out/ImmersiveMe.apk
           ls -lh out/
 
-      - name: Upload as artifact
+      - name: Upload artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ImmersiveMe-APK
@@ -46,13 +49,26 @@ jobs:
           retention-days: 90
 
       - name: Publish release
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Immersive-Me v1.0.${{ github.run_number }}
           body: |
-            بناء تلقائي — APK جاهز للتنصيب مباشرة على أندرويد.
-            - `ImmersiveMe-debug.apk` — نسخة تجريبية
-            - `ImmersiveMe-release.apk` — نسخة الإصدار
+            APK جاهز للتنصيب مباشرة على أندرويد (minSdk 26).
+            - `ImmersiveMe.apk` — نسخة الإصدار
+            - `ImmersiveMe-debug.apk` — نسخة تشخيصية
           files: out/*.apk
-          draft: false
+
+      # عند الفشل: نكتب سجل الأخطاء داخل المستودع ليصبح قابلاً للقراءة من أي مكان
+      - name: Save error log
+        if: failure()
+        run: |
+          { echo "=== BUILD FAILED — run ${{ github.run_number }} ==="; echo; \
+            grep -n "^e: \|error: \|FAILURE\|Caused by\|What went wrong\|> Task .* FAILED\|Could not resolve\|Unresolved reference" /tmp/build.log | tail -120; \
+            echo; echo "===== TAIL 200 ====="; tail -200 /tmp/build.log; } > build-error.txt || true
+          git config user.email "ci@users.noreply.github.com"
+          git config user.name "CI Bot"
+          git add -f build-error.txt
+          git commit -m "ci: build error log [skip ci]" || true
+          git push || true
