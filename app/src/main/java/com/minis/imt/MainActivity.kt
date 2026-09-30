@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     private var injectedScript: String? = null
     private var currentHost: String? = null
     private var lastTab = R.id.tab_browser
+    private var homeVisible = false
 
     private val C_BRAND = Color.parseColor("#7BA0FF")
     private val C_OK = Color.parseColor("#46D68C")
@@ -113,10 +114,11 @@ class MainActivity : AppCompatActivity() {
         paintAll()
 
         if (savedInstanceState == null) {
-            selectTab(R.id.tab_browser)
+            bottomNav.selectedItemId = R.id.tab_browser
+            showHome()                       // نبدأ من الشاشة الرئيسية
             web.loadUrl(intent?.getStringExtra("url") ?: Prefs.homePage)
         } else {
-            selectTab(lastTab)
+            if (lastTab == R.id.tab_browser) showHome() else selectTab(lastTab)
         }
     }
 
@@ -133,6 +135,12 @@ class MainActivity : AppCompatActivity() {
                         bottomNav.selectedItemId = lastTab
                         return false
                     }
+                    R.id.tab_browser -> {
+                        // ضغطة أولى → المتصفح · ضغطة تانية → الرئيسية (تبديل)
+                        if (lastTab == R.id.tab_browser && !homeVisible) showHome()
+                        else selectTab(R.id.tab_browser)
+                        return true
+                    }
                     else -> { selectTab(item.itemId); return true }
                 }
             }
@@ -141,6 +149,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun selectTab(id: Int) {
         lastTab = id
+        homeVisible = false
         browserScreen.visibility = View.GONE
         homeScreen.visibility = View.GONE
         soonScreen.visibility = View.GONE
@@ -172,6 +181,14 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+    }
+
+    private fun showHome() {
+        homeVisible = true
+        browserScreen.visibility = View.GONE
+        soonScreen.visibility = View.GONE
+        homeScreen.visibility = View.VISIBLE
+        buildHome()
     }
 
     private fun showSoon(emoji: String, title: String, body: String, action: String, url: String?) {
