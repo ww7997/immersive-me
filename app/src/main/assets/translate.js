@@ -78,19 +78,26 @@
   var available = (typeof ImtNative !== 'undefined') && ImtNative && ImtNative.translate;
 
   window.__imtCallback = function (id, json) {
-    var cb = pending[id];
-    if (!cb) return;
+    var p = pending[id];
+    if (!p) return;
     delete pending[id];
     var arr = [];
     try { arr = JSON.parse(json) || []; } catch (e) {}
-    cb(arr);
+    p.res(arr);
   };
 
-  function bridgeTranslate(texts) {
+  /** نتيجة مقطع واحد وصلت من البثّ — نعرضها لحظياً */
+  window.__imtPartial = function (id, idx, text) {
+    var p = pending[id];
+    if (!p || !p.cb) return;
+    try { p.cb(idx, text); } catch (e) {}
+  };
+
+  function bridgeTranslate(texts, onPartial) {
     return new Promise(function (resolve) {
       if (!available) { resolve([]); return; }
       var id = 'r' + (++seq);
-      pending[id] = resolve;
+      pending[id] = { res: resolve, cb: onPartial || null };
       try {
         ImtNative.translate(id, JSON.stringify(texts));
       } catch (e) { delete pending[id]; resolve([]); }
@@ -189,10 +196,9 @@
       if (eligible(el)) { seen.add(el); out.push(el); }
     }
     // طبقة ثانية: عُدّ عُقد النص مباشرة — تلتقط المواقع اللي بتستعمل <span> (يوتيوب، ريديت…)
-    var tn = collectTextNodes();
-    for (var j = 0; j < tn.length && out.length < 4000; j++) {
-      if (!seen.has(tn[j])) { seen.add(tn[j]); out.push(tn[j]); }
-    }
+    // ملاحظة: collectTextNodes بتضيف للـ seen بنفسها، فما منعيد الفحص هون
+    var tn = collectTextNodes(seen);
+    for (var j = 0; j < tn.length && out.length < 4000; j++) out.push(tn[j]);
     // نرجّع بس اللي قريب من الشاشة — الباقي بينضاف مع التمرير
     if (CFG.lazy) {
       var vis = [];
@@ -203,10 +209,10 @@
   }
 
   /** كل عنصر بيحتوي نصاً مباشراً — بلا شرط block و بلا شرط "ما تحته عناصر" */
-  function collectTextNodes() {
+  function collectTextNodes(seenOuter) {
     var out = [];
     if (!document.body) return out;
-    var seen = new Set();
+    var seen = seenOuter || new Set();
     var walker;
     try {
       walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
@@ -227,6 +233,15 @@
     while ((node = walker.nextNode())) {
       var p = node.parentElement;
       if (!p || seen.has(p) || p.__imtDone || p.__imtQueued) continue;
+
+      // ما نضيف عنصر إذا أحد **أجداده** رح يتنترجم — منشان ما نكرّر نفس النص
+      var anc = p.parentElement, skip = false;
+      while (anc && anc !== document.body && anc !== document.documentElement) {
+        if (seen.has(anc) || anc.__imtDone || anc.__imtQueued) { skip = true; break; }
+        anc = anc.parentElement;
+      }
+      if (skip) continue;
+
       seen.add(p);
       out.push(p);
       if (out.length > 1500) break;
@@ -237,18 +252,23 @@
   /* -------------------- العرض -------------------- */
   function render(el, text) {
     if (!text || !el.isConnected) return;
+
+    // تحديث النص الموجود بدل إضافة ترجمة تانية
+    if (el.__imtNode && el.__imtNode.isConnected) { el.__imtNode.textContent = text; return; }
+    for (var i = 0; i < el.children.length; i++) {
+      if (el.children[i].classList && el.children[i].classList.contains('imt-trans')) {
+        el.children[i].textContent = text;
+        el.__imtNode = el.children[i];
+        return;
+      }
+    }
+
     el.__imtDone = true;
+    el.__imtQueued = false;
     el.classList.add('imt-done');          // ← علامة حقيقية تُمسح لاحقاً
     el.classList.remove('imt-loading');
     stats.done++;
     report();
-
-    for (var i = 0; i < el.children.length; i++) {
-      if (el.children[i].classList && el.children[i].classList.contains('imt-trans')) {
-        el.children[i].textContent = text;
-        return;
-      }
-    }
 
     var node = document.createElement('span');
     node.className = 'imt-trans';
@@ -269,20 +289,21 @@
       el.appendChild(orig);
       if (!blocky) node.className = 'imt-trans imt-block';
       el.appendChild(node);
+      el.__imtNode = node;
       return;
     }
 
     // عنصر مضمّن (متل span بعنوان يوتيوب) → الترجمة سطر جديد تحته
     if (!blocky) {
       node.className = 'imt-trans imt-block';
-      try { el.insertAdjacentElement('afterend', node); return; }
+      try { el.insertAdjacentElement('afterend', node); el.__imtNode = node; return; }
       catch (e) { /* نكمل بالطريقة العادية */ }
     }
 
-    if (inside) el.appendChild(node);
+    if (inside) { el.appendChild(node); el.__imtNode = node; }
     else {
-      try { el.insertAdjacentElement('afterend', node); }
-      catch (e) { el.appendChild(node); }
+      try { el.insertAdjacentElement('afterend', node); el.__imtNode = node; }
+      catch (e) { el.appendChild(node); el.__imtNode = node; }
     }
   }
 
@@ -303,6 +324,7 @@
       d[m].classList.remove('imt-loading');
       d[m].__imtDone = false;
       d[m].__imtQueued = false;
+      d[m].__imtNode = null;
     }
     stats.done = 0;
     stats.total = 0;
@@ -347,8 +369,7 @@
     var limit = firstBatch ? Math.min(3, BATCH) : BATCH;
     while (batch.length < limit && queue.length) {
       var el = queue.shift();
-      el.__imtQueued = false;
-      if (!el.isConnected || el.__imtDone) continue;
+      if (!el.isConnected || el.__imtDone) continue;   // ← ما نمسح علامة الانتظار هون
       var t = getText(el);
       if (!t) { el.classList.remove('imt-loading'); continue; }
       batch.push([el, t]);
@@ -359,15 +380,18 @@
     inflight++;
     var texts = batch.map(function (b) { return b[1]; });
 
-    bridgeTranslate(texts).then(function (list) {
+    bridgeTranslate(texts, function (idx, txt) {
+      var b = batch[idx];
+      if (b && txt) { try { render(b[0], txt); } catch (e) {} }
+    }).then(function (list) {
       if (!running) return;
       batch.forEach(function (b, i) {
         var r = ((list && list[i]) || '').trim();
         if (r) render(b[0], r);
-        else b[0].classList.remove('imt-loading');
+        else { b[0].classList.remove('imt-loading'); b[0].__imtQueued = false; }
       });
     })['catch'](function () {
-      batch.forEach(function (b) { b[0].classList.remove('imt-loading'); });
+      batch.forEach(function (b) { b[0].classList.remove('imt-loading'); b[0].__imtQueued = false; });
     }).then(function () {
       inflight--;
       setTimeout(pump, 10);

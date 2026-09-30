@@ -733,7 +733,9 @@ class MainActivity : AppCompatActivity() {
             pool.execute {
                 val t0 = System.currentTimeMillis()
                 val out = try {
-                    TranslateEngine.translate(texts, Prefs.target)
+                    TranslateEngine.translate(texts, Prefs.target) { idx, txt ->
+                        if (idx in texts.indices) replyPartial(id, idx, txt)
+                    }
                 } catch (e: Exception) {
                     Log.e("IMT", "translate failed", e)
                     List(texts.size) { "" }
@@ -776,6 +778,15 @@ class MainActivity : AppCompatActivity() {
     private fun reply(id: String, json: String) {
         main.post {
             val js = "window.__imtCallback(" + JSONObject.quote(id) + "," + JSONObject.quote(json) + ")"
+            web.evaluateJavascript(js, null)
+        }
+    }
+
+    /** نتيجة مقطع واحد وصلت من البثّ — نعرضها فوراً */
+    private fun replyPartial(id: String, index: Int, text: String) {
+        main.post {
+            val js = "window.__imtPartial(" + JSONObject.quote(id) + "," + index + "," +
+                     JSONObject.quote(text) + ")"
             web.evaluateJavascript(js, null)
         }
     }

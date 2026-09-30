@@ -48,7 +48,11 @@ object TranslateEngine {
         return "$target|$tag|${h.toString(36)}|${text.length}"
     }
 
-    fun translate(texts: List<String>, target: String): List<String> {
+    fun translate(
+        texts: List<String>,
+        target: String,
+        onItem: ((Int, String) -> Unit)? = null
+    ): List<String> {
         if (texts.isEmpty()) return emptyList()
         val provider = Prefs.chosenProvider()   // حسب الوضع المختار
         val tag = provider?.id ?: "google"
@@ -61,16 +65,23 @@ object TranslateEngine {
             val c = Prefs.cacheGet(ckey(t, target, tag))
             if (c != null) out[i] = c else { idxs.add(i); raws.add(t) }
         }
-        if (raws.isEmpty()) return out.map { it ?: "" }
+        if (raws.isEmpty()) {
+            // كل شي بالكاش — نبعتو فوراً للواجهة
+            texts.forEachIndexed { i, _ -> out[i]?.let { onItem?.invoke(i, it) } }
+            return out.map { it ?: "" }
+        }
 
         if (failStreak >= 3 && provider != null) {
             lastError = lastError ?: "فشل متكرر من المزوّد — أُوقف مؤقتاً"
             return out.map { it ?: "" }
         }
 
+        // نحوّل فهرس الدفعة لفهرس أصلي
+        val cb: ((Int, String) -> Unit)? = onItem?.let { f -> { i, t -> f(idxs[i], t) } }
+
         val results: List<String> = try {
             if (provider == null) Google.freeBatch(raws, target, ::fail)
-            else aiBatch(raws, target, provider)
+            else aiBatch(raws, target, provider, cb)
         } catch (e: Exception) {
             lastError = describe(e); failStreak++
             List(raws.size) { "" }
@@ -201,9 +212,18 @@ object TranslateEngine {
         }
     }
 
-    private fun aiBatch(texts: List<String>, target: String, p: Provider): List<String> {
+    private fun aiBatch(
+        texts: List<String>,
+        target: String,
+        p: Provider,
+        onItem: ((Int, String) -> Unit)? = null
+    ): List<String> {
         val n = texts.size
-        if (n == 1) return listOf(aiOne(texts[0], target, p))
+        if (n == 1) {
+            val r = aiOne(texts[0], target, p)
+            if (r.isNotBlank()) onItem?.invoke(0, r)
+            return listOf(r)
+        }
 
         val prompt = StringBuilder()
         prompt.append("Translate each numbered block below into $target.\n")
@@ -214,49 +234,127 @@ object TranslateEngine {
             prompt.append("[").append(i + 1).append("] ").append(t.replace("\n", " ").trim()).append("\n")
         }
 
-        val out: String = try {
-            aiCall(p, prompt.toString(), T_BATCH).trim()
-        } catch (e: Exception) {
-            lastError = describe(e)
-            return aiParallel(texts, target, p)      // ← متوازي مو تسلسلي
-        }
-
-        // نظّف أسوار الماركداون
-        var body = out
-        if (body.startsWith("```")) {
-            body = body.replace(Regex("""(?s)^```[a-zA-Z]*\s*"""), "")
-                       .replace(Regex("""(?s)\s*```\s*$"""), "").trim()
-        }
-
         val res = arrayOfNulls<String>(n)
-        val plain = ArrayList<String>()
-        for (line in body.split("\n")) {
-            val l = line.trim()
-            if (l.isEmpty()) continue
-            val m = Regex("""^\[?\(?(\d+)\)?\]?[.:)\-—]?\s+(.*)$""").find(l)
-            if (m != null) {
-                val ix = m.groupValues[1].toIntOrNull()
-                if (ix != null && ix in 1..n && res[ix - 1] == null) {
-                    res[ix - 1] = m.groupValues[2].trim(); continue
+
+        /* ===== ١) بثّ مباشر — النتائج تطلع أول بأول ===== */
+        try {
+            aiCallStream(p, prompt.toString(), T_BATCH, n) { ix, txt ->
+                if (ix in 1..n && res[ix - 1] == null && txt.isNotBlank()) {
+                    res[ix - 1] = txt
+                    onItem?.invoke(ix - 1, txt)
                 }
             }
-            plain.add(l)
+        } catch (e: Exception) {
+            lastError = describe(e)
+        }
+        if (res.all { it != null }) return res.map { it ?: "" }
+
+        /* ===== ٢) اللي ناقص → نداءات متوازية ===== */
+        val missing = (0 until n).filter { res[it] == null }
+        if (missing.isNotEmpty()) {
+            val filled = aiParallel(missing.map { texts[it] }, target, p)
+            missing.forEachIndexed { k, i ->
+                res[i] = filled.getOrElse(k) { "" }
+                if (!res[i].isNullOrBlank()) onItem?.invoke(i, res[i]!!)
+            }
+        }
+        return res.map { it ?: "" }
+    }
+
+    /** تحليل الأسطر المكتملة من رد البثّ */
+    private fun parseStreamed(s: String, n: Int, done: BooleanArray, onItem: (Int, String) -> Unit) {
+        for (ln in s.split("\n")) {
+            val l = ln.trim()
+            if (l.isEmpty()) continue
+            val m = Regex("""^\s*\[?\(?(\d+)\)?\]?[.:)\-—]?\s+(.*)$""").find(l) ?: continue
+            val ix = m.groupValues[1].toIntOrNull() ?: continue
+            if (ix in 1..n && !done[ix - 1]) {
+                val txt = m.groupValues[2].trim()
+                if (txt.isNotBlank()) { done[ix - 1] = true; onItem(ix, txt) }
+            }
+        }
+    }
+
+    /** نداء بثّ مباشر (SSE) — كل مقطع بيوصل لحالو */
+    private fun aiCallStream(
+        p: Provider,
+        userPrompt: String,
+        timeoutMs: Int,
+        n: Int,
+        onItem: (Int, String) -> Unit
+    ) {
+        val url = chatUrl(p)
+        val sys = (p.systemPrompt.ifBlank { Provider.DEFAULT_PROMPT }) + dialectHint()
+        val body = JSONObject().apply {
+            put("model", p.model)
+            put("temperature", 0.2)
+            put("stream", true)
+            put("messages", JSONArray().apply {
+                put(JSONObject().put("role", "system").put("content", sys))
+                put(JSONObject().put("role", "user").put("content", userPrompt))
+            })
+        }
+        val headers = HashMap<String, String>()
+        headers["Content-Type"] = "application/json"
+        headers["Accept"] = "text/event-stream"
+        if (p.apiKey.isNotBlank()) headers["Authorization"] = "Bearer " + p.apiKey
+
+        val conn = open(url, timeoutMs)
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
+        conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+
+        val code = conn.responseCode
+        if (code !in 200..299) {
+            val err = try {
+                (conn.errorStream ?: conn.inputStream)?.let {
+                    BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
+                } ?: ""
+            } catch (e: Exception) { "" }
+            conn.disconnect()
+            throw RuntimeException("HTTP $code: " + err.take(200))
         }
 
-        // كل الأسطر مرقّمة ومطابقة
-        if (res.all { it != null }) {
-            return res.map { (it ?: "").replace(Regex("""^\[?\d+\]?[.:)]?\s+"""), "").trim() }
+        val reader = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8))
+        val acc = StringBuilder()
+        val done = BooleanArray(n)
+        var parsedUpTo = 0
+        try {
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (!line.startsWith("data:")) continue
+                val payload = line.substring(5).trim()
+                if (payload == "[DONE]") break
+                val delta = try {
+                    JSONObject(payload).optJSONArray("choices")?.optJSONObject(0)
+                        ?.optJSONObject("delta")?.optString("content", "") ?: ""
+                } catch (e: Exception) { "" }
+                if (delta.isEmpty()) continue
+                acc.append(delta)
+
+                // نحلّل بس الأسطر المكتملة (اللي بعدها \n)
+                val cut = acc.lastIndexOf('\n')
+                if (cut > parsedUpTo) {
+                    parseStreamed(acc.substring(parsedUpTo, cut), n, done, onItem)
+                    parsedUpTo = cut
+                }
+            }
+            // الباقي بلا سطر جديد
+            if (parsedUpTo < acc.length) parseStreamed(acc.substring(parsedUpTo), n, done, onItem)
+        } finally {
+            try { reader.close() } catch (e: Exception) {}
+            conn.disconnect()
         }
-        // ما في ترقيم بس العدد مطابق → خدهم بالترتيب
-        if (plain.size == n && res.none { it != null }) return plain
-        // عدد الأسطر = عدد المقاطع (مع بعض الترقيم) → أكمل الناقص بالترتيب
-        if (plain.size + res.count { it != null } == n) {
-            var pi = 0
-            for (i in 0 until n) if (res[i] == null) res[i] = plain[pi++]
-            return res.map { (it ?: "").trim() }
+    }
+
+    private fun chatUrl(p: Provider): String {
+        val base = p.baseUrl.trimEnd('/')
+        return when {
+            base.endsWith("/chat/completions") -> base
+            base.endsWith("/v1") -> "$base/chat/completions"
+            else -> "$base/v1/chat/completions"
         }
-        // فشل التحليل → متوازي
-        return aiParallel(texts, target, p)
     }
 
     private fun aiCall(p: Provider, userPrompt: String, timeoutMs: Int): String {
@@ -306,15 +404,12 @@ object TranslateEngine {
     fun dialectHint(): String {
         if (!Prefs.target.startsWith("ar")) return ""
         return when (Prefs.dialect) {
-            "sy" -> " IMPORTANT: Write the translation in natural, everyday **Syrian (Levantine) Arabic dialect** — " +
-                    "exactly the way people actually speak in Damascus. Use colloquial words and idioms, " +
-                    "not formal Modern Standard Arabic. Avoid stiff or classical phrasing. " +
-                    "It must sound like a Syrian person talking, not like a news bulletin."
-            "lb" -> " IMPORTANT: Write the translation in natural everyday Lebanese Arabic dialect — colloquial, not Modern Standard Arabic."
-            "eg" -> " IMPORTANT: Write the translation in natural everyday Egyptian Arabic dialect — colloquial, not Modern Standard Arabic."
-            "gulf" -> " IMPORTANT: Write the translation in natural everyday Gulf (Khaleeji) Arabic dialect — colloquial, not Modern Standard Arabic."
-            "iq" -> " IMPORTANT: Write the translation in natural everyday Iraqi Arabic dialect — colloquial, not Modern Standard Arabic."
-            "ma" -> " IMPORTANT: Write the translation in natural everyday Moroccan Darija — colloquial, not Modern Standard Arabic."
+            "sy" -> " Translate into natural everyday Syrian (Levantine) Arabic dialect — the way people speak in Damascus. Colloquial, not formal MSA."
+            "lb" -> " Translate into natural everyday Lebanese Arabic dialect (colloquial)."
+            "eg" -> " Translate into natural everyday Egyptian Arabic dialect (colloquial)."
+            "gulf" -> " Translate into natural everyday Gulf (Khaleeji) Arabic dialect."
+            "iq" -> " Translate into natural everyday Iraqi Arabic dialect."
+            "ma" -> " Translate into natural everyday Moroccan Darija."
             else -> " Use clear Modern Standard Arabic (فصحى)."
         }
     }
