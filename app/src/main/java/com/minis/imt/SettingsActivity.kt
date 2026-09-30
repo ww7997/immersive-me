@@ -322,7 +322,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "Immersive-Me v2.0 · ملكك · بلا اشتراك ولا حساب"
+            text = "Immersive-Me v3.0 · ملكك · بلا اشتراك ولا حساب"
             setTextColor(Color.parseColor("#4A5263"))
             textSize = 11f
             gravity = android.view.Gravity.CENTER
@@ -359,6 +359,11 @@ class SettingsActivity : AppCompatActivity() {
         suppress = true
         providerBtn.text = Prefs.providerName()
         val p = providers.firstOrNull { it.id == Prefs.activeProviderId }
+        val keyInfo = when {
+            p == null -> ""
+            p.apiKey.isBlank() -> " • المفتاح: ❌ فاضي"
+            else -> " • المفتاح: ✓ ${p.apiKey.length} حرف (…${p.apiKey.takeLast(4)})"
+        }
         if (p == null) {
             nameEt.setText(Provider.google.name)
             baseEt.setText("—"); keyEt.setText("—"); modelEt.setText("—"); promptEt.setText("")
@@ -374,9 +379,9 @@ class SettingsActivity : AppCompatActivity() {
         hintTv.text = if (p == null)
             "✓ جاهز — محرّك مجاني بلا مفتاح"
         else if (Prefs.effectiveProvider() != null)
-            "✓ جاهز — الترجمة رح تستعمل «${p.name}»"
+            "✓ جاهز — الترجمة رح تستعمل «${p.name}»$keyInfo"
         else
-            "⚠️ ناقص: ${if (p.apiKey.isBlank()) "API Key" else ""}${if (p.baseUrl.isBlank()) " Base URL" else ""}${if (p.model.isBlank()) " Model" else ""} — الترجمة رح تستعمل Google المجاني"
+            "⚠️ ناقص: ${if (p.apiKey.isBlank()) "API Key" else ""}${if (p.baseUrl.isBlank()) " Base URL" else ""}${if (p.model.isBlank()) " Model" else ""}$keyInfo — الترجمة رح تستعمل Google المجاني"
         suppress = false
     }
 
@@ -388,7 +393,8 @@ class SettingsActivity : AppCompatActivity() {
         val p = providers[idx]                       // ← المزوّد الحقيقي بالقائمة المحلية
         p.name = nameEt.text?.toString()?.trim().orEmpty()
         p.baseUrl = baseEt.text?.toString()?.trim().orEmpty()
-        p.apiKey = keyEt.text?.toString()?.trim().orEmpty()
+        p.apiKey = (keyEt.text?.toString() ?: "").trim()
+            .removePrefix("Bearer ").removePrefix("bearer ").trim()   // نتقبّل لو لصقت "Bearer" معو
         p.model = modelEt.text?.toString()?.trim().orEmpty()
         p.systemPrompt = promptEt.text?.toString().orEmpty()
         Prefs.providers = providers
@@ -404,7 +410,17 @@ class SettingsActivity : AppCompatActivity() {
         statusTv.text = "جاري الاختبار…"
         Thread {
             val sb = StringBuilder()
-            sb.append("المحرّك: ").append(Prefs.effectiveName()).append("\n\n")
+            sb.append("المحرّك: ").append(Prefs.effectiveName()).append("\n")
+            val ap = Prefs.activeProvider()
+            sb.append("المفتاح: ").append(
+                when {
+                    ap == null -> "غير مطلوب (محرّك مجاني)"
+                    ap.apiKey.isBlank() -> "❌ فاضي — ما انحفظ!"
+                    else -> "✓ ${ap.apiKey.length} حرف (…${ap.apiKey.takeLast(4)})"
+                }
+            ).append("\n")
+            sb.append("العنوان: ").append(ap?.baseUrl ?: "-").append("\n")
+            sb.append("الموديل: ").append(ap?.model ?: "-").append("\n\n")
 
             // ---- اختبار ١: مقطع واحد ----
             TranslateEngine.clearError()
