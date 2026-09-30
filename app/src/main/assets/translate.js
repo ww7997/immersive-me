@@ -56,7 +56,11 @@
     '.imt-subs .s2{font-size:16px;line-height:1.4;font-weight:700;color:#fff;',
     '  display:inline-block;padding:2px 10px;background:rgba(0,0,0,.45);border-radius:8px;',
     '  text-shadow:0 1px 4px #000;}',
-    '.imt-subs.only .s1{display:none;}'
+    '.imt-subs.only .s1{display:none;}',
+    /* ---- لوحة تشخيص يوتيوب ---- */
+    '.imt-ytdbg{position:fixed;left:8px;top:8px;z-index:2147483647;background:rgba(0,0,0,.82);',
+    '  color:#8CF;font:10px/1.5 monospace;padding:7px 9px;border-radius:8px;max-width:62vw;',
+    '  white-space:pre-wrap;direction:ltr;text-align:left;pointer-events:none;border:1px solid #345;}'
   ].join('\n');
 
   function injectCSS() {
@@ -647,6 +651,35 @@
     win.__imtOut = tr;
   }
 
+  /* ===== لوحة تشخيص — تخلّي المشكلة تبان بصورة وحدة ===== */
+  var DBG = { el: null, msg: '' };
+
+  function ytDbg(line) { DBG.msg = line; }
+
+  function ytDbgTick() {
+    var on = isYouTube() && (/\/watch|\/shorts/.test(location.pathname));
+    if (!on) { if (DBG.el) { DBG.el.remove(); DBG.el = null; } return; }
+    if (!DBG.el) {
+      DBG.el = document.createElement('div');
+      DBG.el.className = 'imt-ytdbg';
+      DBG.el.setAttribute('data-imt-skip', '1');
+      (document.documentElement || document.body).appendChild(DBG.el);
+    }
+    var win = document.querySelector('.caption-window');
+    var segs = document.querySelectorAll('.ytp-caption-segment').length;
+    var v = document.querySelector('video');
+    var trCount = 0;
+    for (var i = 0; i < YT.cues.length; i++) if (YT.cues[i].tr) trCount++;
+    DBG.el.textContent =
+      'runner: ' + (YT.loaded ? 'CUES' : (YT.live ? 'LIVE' : 'SEARCH')) + '\n' +
+      'cues: ' + YT.cues.length + '  tr: ' + trCount + '\n' +
+      'captionWin: ' + (win ? 'YES' : 'no') + '  segs: ' + segs + '\n' +
+      'ccBtn: ' + (document.querySelector('.ytp-subtitles-button') ? 'yes' : 'NO') + '\n' +
+      'video: ' + (v ? (Math.round(v.currentTime) + 's ' + (v.paused ? 'PAUSED' : 'play')) : 'none') + '\n' +
+      'subs:' + (CFG.subs || '?') + '  hits: ' + YT.hitIdx + '\n' +
+      (DBG.msg ? 'msg: ' + DBG.msg : '');
+  }
+
   /* ==================== ترجمات يوتيوب الثنائية ==================== */
   /**
    * ثلاث طرق بالترتيب:
@@ -908,6 +941,7 @@
 
   function ytTick() {
     if (!running) return;
+    ytDbgTick();
 
     /* ---- التحميل والبدائل ---- */
     if (!YT.loaded && !YT.live) {
