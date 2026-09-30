@@ -223,6 +223,7 @@
   function render(el, text) {
     if (!text || !el.isConnected) return;
     el.__imtDone = true;
+    el.classList.add('imt-done');          // ← علامة حقيقية تُمسح لاحقاً
     el.classList.remove('imt-loading');
     stats.done++;
     report();
@@ -280,8 +281,13 @@
     }
     var l = document.querySelectorAll('.imt-loading');
     for (var k = 0; k < l.length; k++) l[k].classList.remove('imt-loading');
-    var d = document.querySelectorAll('.__imtDone');
-    for (var m = 0; m < d.length; m++) d[m].__imtDone = false;
+    var d = document.querySelectorAll('.imt-done, .imt-loading');
+    for (var m = 0; m < d.length; m++) {
+      d[m].classList.remove('imt-done');
+      d[m].classList.remove('imt-loading');
+      d[m].__imtDone = false;
+      d[m].__imtQueued = false;
+    }
     stats.done = 0;
     stats.total = 0;
     report();
@@ -541,6 +547,9 @@
     stats.total = found.length;
     stats.done = 0;
     report();
+    if (found.length === 0) {
+      showBadge('ما لقيت نص جديد بهالصفحة — جرّب تمرّر أو أعد تحميل الصفحة');
+    }
     found.forEach(enqueue);
     startAutoLoad();
     showBadge('Immersive-Me · ' + CFG.target + ' · ' + (CFG.provider || '') + ' · ' + found.length + ' مقطع');
