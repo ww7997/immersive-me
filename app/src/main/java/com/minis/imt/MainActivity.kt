@@ -494,6 +494,27 @@ class MainActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, v -> Prefs.inputTranslate = v }
         })
 
+        title("ترجمات الفيديو (يوتيوب)")
+        val subsGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
+        listOf(
+            false to "ترجمة فقط",
+            true to "أصلي + ترجمة"
+        ).forEach { (both, lbl) ->
+            subsGroup.addView(Chip(this).apply {
+                text = lbl
+                textSize = 12f
+                isCheckable = true
+                isChecked = Prefs.subsBilingual == both
+                setOnClickListener {
+                    Prefs.subsBilingual = both
+                    web.evaluateJavascript(
+                        "window.__imtYtReset && window.__imtYtReset();", null)
+                    snack(if (both) "الترجمات: أصلي + ترجمة" else "الترجمات: ترجمة فقط")
+                }
+            })
+        }
+        root.addView(subsGroup)
+
         title("الموقع الحالي")
         root.addView(MaterialSwitch(this).apply {
             text = "ترجمة تلقائية على " + (currentHost ?: "هالموقع")
@@ -740,6 +761,7 @@ class MainActivity : AppCompatActivity() {
             o.put("selection", Prefs.selectionTranslate)
             o.put("input", Prefs.inputTranslate)
             o.put("lazy", Prefs.lazyTranslate)
+            o.put("subs", if (Prefs.subsBilingual) "both" else "tr")
             val ai = Prefs.effectiveProvider() != null
             // دفعات أصغر + تزامن أعلى = نتائج تظهر أسرع بكثير مع موديلات الـ AI
             val b = Prefs.batchOverride.takeIf { it > 0 } ?: 6

@@ -49,12 +49,14 @@
     '.imt-inp .t{font-size:.94em;line-height:1.6;direction:rtl;text-align:right;color:inherit;',
     '  opacity:.95;border-inline-start:3px solid rgba(110,150,255,.6);padding-inline-start:9px;}',
     /* ---- ترجمات الفيديو (يوتيوب) ---- */
-    '.imt-subs{position:absolute;left:3%;right:3%;bottom:9%;z-index:2147483645;text-align:center;',
+    '.imt-subs{position:absolute;left:5%;right:5%;bottom:7%;z-index:2147483645;text-align:center;',
     '  pointer-events:none;display:none;}',
-    '.imt-subs .s1{font-size:13px;line-height:1.4;color:#d6dce8;direction:ltr;',
-    '  text-shadow:0 2px 5px #000,0 0 3px #000;}',
-    '.imt-subs .s2{font-size:17px;line-height:1.45;font-weight:700;color:#fff;margin-top:3px;',
-    '  text-shadow:0 2px 6px #000,0 0 4px #000;}',
+    '.imt-subs .s1{font-size:11px;line-height:1.3;color:#c9d2e0;direction:ltr;opacity:.85;',
+    '  text-shadow:0 1px 3px #000,0 0 2px #000;margin-bottom:2px;}',
+    '.imt-subs .s2{font-size:16px;line-height:1.4;font-weight:700;color:#fff;',
+    '  display:inline-block;padding:2px 10px;background:rgba(0,0,0,.45);border-radius:8px;',
+    '  text-shadow:0 1px 4px #000;}',
+    '.imt-subs.only .s1{display:none;}',
     /* نخفي ترجمات يوتيوب الأصلية لمّا نشتغل — منشان ما يتكرّرو */
     'html.imt-yt .ytp-caption-window-container{display:none !important;}'
   ].join('\n');
@@ -757,12 +759,14 @@
 
   function ytEnsureOverlay() {
     var v = document.querySelector('video');
-    if (!v || !v.parentElement) return null;
-    var host = v.parentElement;
+    if (!v) return null;
+    // نحطه داخل حاوية المشغّل — مو بصفحة كاملة
+    var host = document.querySelector('.html5-video-player') || v.parentElement;
+    if (!host) return null;
     if (YT.ov && YT.ov.isConnected && YT.ov.parentElement === host) return YT.ov;
     if (YT.ov) { try { YT.ov.remove(); } catch (e) {} }
     YT.ov = document.createElement('div');
-    YT.ov.className = 'imt-subs';
+    YT.ov.className = 'imt-subs' + (CFG.subs === 'both' ? '' : ' only');
     YT.ov.setAttribute('data-imt-skip', '1');
     var a = document.createElement('div'); a.className = 's1';
     var b = document.createElement('div'); b.className = 's2';

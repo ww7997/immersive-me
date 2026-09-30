@@ -128,6 +128,11 @@ object Prefs {
         get() = sp.getBoolean("lazy", true)
         set(v) = sp.edit().putBoolean("lazy", v).apply()
 
+    /** ترجمات الفيديو: false = ترجمة فقط · true = أصلي + ترجمة */
+    var subsBilingual: Boolean
+        get() = sp.getBoolean("subsBoth", false)
+        set(v) = sp.edit().putBoolean("subsBoth", v).apply()
+
     /** لهجة الترجمة العربية — الافتراضي سورية */
     var dialect: String
         get() = sp.getString("dialect", "sy")!!
