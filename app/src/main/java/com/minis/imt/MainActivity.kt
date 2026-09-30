@@ -661,10 +661,18 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 urlBar.setText(url ?: "")
                 val h = hostOf(url)
-                currentHost = h
+
+                // يوتيوب الموبايل ما عندو زر ترجمات — نرجّعو لسطح المكتب فوراً
+                if (h == "m.youtube.com" && !Prefs.desktopMode && url != null) {
+                    val fixed = url.replace("//m.youtube.com", "//www.youtube.com")
+                    web.settings.userAgentString = UA_DESKTOP
+                    view?.loadUrl(fixed)
+                    return
+                }
                 if (h != null && (h.contains("youtube.com") || h.contains("youtu.be")) && !Prefs.desktopMode) {
                     if (web.settings.userAgentString != UA_DESKTOP) web.settings.userAgentString = UA_DESKTOP
                 }
+                currentHost = h
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
