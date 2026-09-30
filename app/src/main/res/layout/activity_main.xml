@@ -7,140 +7,231 @@
     android:background="@color/bg"
     android:fitsSystemWindows="true">
 
-    <!-- ========== شريط الأدوات ========== -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@color/surface"
-        android:paddingStart="10dp"
-        android:paddingEnd="6dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:elevation="6dp">
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:layout_weight="1"
-            app:cardCornerRadius="22dp"
-            app:cardBackgroundColor="@color/surface2"
-            app:cardElevation="0dp"
-            app:strokeWidth="0dp">
-
-            <EditText
-                android:id="@+id/urlBar"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="@null"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:hint="ابحث أو اكتب رابطاً"
-                android:textColorHint="@color/muted"
-                android:textColor="@color/on_surface"
-                android:textSize="14sp"
-                android:singleLine="true"
-                android:imeOptions="actionGo"
-                android:inputType="textUri"
-                android:selectAllOnFocus="true"
-                android:importantForAutofill="no" />
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnGo"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:minWidth="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            app:icon="@drawable/ic_go"
-            app:iconSize="21dp"
-            app:iconPadding="0dp"
-            app:iconGravity="textStart"
-            app:iconTint="@color/muted" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnTr"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="46dp"
-            android:layout_height="44dp"
-            android:minWidth="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            app:icon="@drawable/ic_translate"
-            app:iconSize="22dp"
-            app:iconPadding="0dp"
-            app:iconGravity="textStart"
-            app:iconTint="@color/muted" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCfg"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:minWidth="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            app:icon="@drawable/ic_settings"
-            app:iconSize="21dp"
-            app:iconPadding="0dp"
-            app:iconGravity="textStart"
-            app:iconTint="@color/muted" />
-    </LinearLayout>
-
-    <!-- ========== شريط الحالة ========== -->
-    <LinearLayout
-        android:id="@+id/statusBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@color/surface"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="8dp">
-
-        <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="جاهز"
-            android:textColor="@color/muted"
-            android:textSize="11sp"
-            android:singleLine="true"
-            android:ellipsize="end" />
-
-        <TextView
-            android:id="@+id/tvChip"
-            android:layout_width="wrap_content"
-            android:layout_height="26dp"
-            android:gravity="center"
-            android:background="@drawable/bg_chip"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:text="AR"
-            android:textColor="@color/brand"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <ProgressBar
-        android:id="@+id/progress"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="2dp"
-        android:max="100"
-        android:progress="0"
-        android:progressTint="@color/brand"
-        android:visibility="invisible" />
-
-    <WebView
-        android:id="@+id/web"
+    <FrameLayout
+        android:id="@+id/screenHost"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
+
+        <!-- ===================== شاشة المتصفح ===================== -->
+        <LinearLayout
+            android:id="@+id/browserScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@color/surface"
+                android:paddingStart="10dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:elevation="6dp">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    app:cardCornerRadius="22dp"
+                    app:cardBackgroundColor="@color/surface2"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="0dp">
+
+                    <EditText
+                        android:id="@+id/urlBar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@null"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:hint="ابحث أو اكتب رابطاً"
+                        android:textColorHint="@color/muted"
+                        android:textColor="@color/on_surface"
+                        android:textSize="14sp"
+                        android:singleLine="true"
+                        android:imeOptions="actionGo"
+                        android:inputType="textUri"
+                        android:selectAllOnFocus="true"
+                        android:importantForAutofill="no" />
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnGo"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:icon="@drawable/ic_go"
+                    app:iconSize="21dp"
+                    app:iconPadding="0dp"
+                    app:iconGravity="textStart"
+                    app:iconTint="@color/muted" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTr"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="46dp"
+                    android:layout_height="44dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:icon="@drawable/ic_translate"
+                    app:iconSize="22dp"
+                    app:iconPadding="0dp"
+                    app:iconGravity="textStart"
+                    app:iconTint="@color/muted" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMenu"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    app:icon="@drawable/ic_settings"
+                    app:iconSize="21dp"
+                    app:iconPadding="0dp"
+                    app:iconGravity="textStart"
+                    app:iconTint="@color/muted" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@color/surface"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:id="@+id/tvStatus"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="جاهز"
+                    android:textColor="@color/muted"
+                    android:textSize="11sp"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/tvChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="26dp"
+                    android:gravity="center"
+                    android:background="@drawable/bg_chip"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="AR"
+                    android:textColor="@color/brand"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="@color/brand"
+                android:visibility="invisible" />
+
+            <WebView
+                android:id="@+id/web"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+        </LinearLayout>
+
+        <!-- ===================== الشاشة الرئيسية ===================== -->
+        <ScrollView
+            android:id="@+id/homeScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/homeRoot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="18dp"
+                android:paddingBottom="24dp" />
+        </ScrollView>
+
+        <!-- ===================== شاشة قيد البناء ===================== -->
+        <LinearLayout
+            android:id="@+id/soonScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@color/bg"
+            android:padding="32dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/soonIcon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🚧"
+                android:textSize="52sp" />
+
+            <TextView
+                android:id="@+id/soonTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="قيد البناء"
+                android:textColor="@color/on_surface"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/soonBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:lineSpacingExtra="4dp"
+                android:text=""
+                android:textColor="@color/muted"
+                android:textSize="13sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/soonAction"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
+                android:text="افتح في المتصفح"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        app:elevation="10dp"
+        app:labelVisibilityMode="labeled"
+        app:itemIconTint="@color/nav_item"
+        app:itemTextColor="@color/nav_item"
+        app:menu="@menu/bottom_nav" />
 
 </LinearLayout>

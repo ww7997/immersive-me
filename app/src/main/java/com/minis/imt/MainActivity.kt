@@ -4,26 +4,33 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.webkit.*
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.navigation.NavigationBarView
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.snackbar.Snackbar
 import org.json.JSONArray
 import org.json.JSONObject
@@ -38,18 +45,32 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private lateinit var btnGo: MaterialButton
     private lateinit var btnTr: MaterialButton
-    private lateinit var btnCfg: MaterialButton
+    private lateinit var btnMenu: MaterialButton
     private lateinit var tvStatus: TextView
     private lateinit var tvChip: TextView
+
+    private lateinit var browserScreen: LinearLayout
+    private lateinit var homeScreen: ScrollView
+    private lateinit var soonScreen: LinearLayout
+    private lateinit var homeRoot: LinearLayout
+    private lateinit var soonIcon: TextView
+    private lateinit var soonTitle: TextView
+    private lateinit var soonBody: TextView
+    private lateinit var soonAction: MaterialButton
+    private lateinit var bottomNav: BottomNavigationView
 
     private val main = Handler(Looper.getMainLooper())
     private val pool = Executors.newFixedThreadPool(4)
     private var injectedScript: String? = null
     private var currentHost: String? = null
+    private var lastTab = R.id.tab_browser
 
     private val C_BRAND = Color.parseColor("#7BA0FF")
     private val C_OK = Color.parseColor("#46D68C")
     private val C_MUTED = Color.parseColor("#8B94A7")
+    private val C_TEXT = Color.parseColor("#E7EAF2")
+    private val C_SURFACE = Color.parseColor("#161A21")
+    private val C_SURFACE2 = Color.parseColor("#1F242D")
 
     private val UA =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
@@ -71,20 +92,259 @@ class MainActivity : AppCompatActivity() {
         progress = findViewById(R.id.progress)
         btnGo = findViewById(R.id.btnGo)
         btnTr = findViewById(R.id.btnTr)
-        btnCfg = findViewById(R.id.btnCfg)
+        btnMenu = findViewById(R.id.btnMenu)
         tvStatus = findViewById(R.id.tvStatus)
         tvChip = findViewById(R.id.tvChip)
 
+        browserScreen = findViewById(R.id.browserScreen)
+        homeScreen = findViewById(R.id.homeScreen)
+        soonScreen = findViewById(R.id.soonScreen)
+        homeRoot = findViewById(R.id.homeRoot)
+        soonIcon = findViewById(R.id.soonIcon)
+        soonTitle = findViewById(R.id.soonTitle)
+        soonBody = findViewById(R.id.soonBody)
+        soonAction = findViewById(R.id.soonAction)
+        bottomNav = findViewById(R.id.bottomNav)
+
         setupWebView()
         setupToolbar()
+        setupNav()
+        buildHome()
         paintAll()
 
-        if (savedInstanceState == null) web.loadUrl(intent?.getStringExtra("url") ?: Prefs.homePage)
+        if (savedInstanceState == null) {
+            selectTab(R.id.tab_browser)
+            web.loadUrl(intent?.getStringExtra("url") ?: Prefs.homePage)
+        } else {
+            selectTab(lastTab)
+        }
     }
 
-    /* ===================== الواجهة ===================== */
-
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    /* ===================== التنقّل ===================== */
+
+    private fun setupNav() {
+        bottomNav.setOnItemSelectedListener(object : NavigationBarView.OnItemSelectedListener {
+            override fun onNavigationItemSelected(item: android.view.MenuItem): Boolean {
+                when (item.itemId) {
+                    R.id.tab_settings -> {
+                        startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                        bottomNav.selectedItemId = lastTab
+                        return false
+                    }
+                    else -> { selectTab(item.itemId); return true }
+                }
+            }
+        })
+    }
+
+    private fun selectTab(id: Int) {
+        lastTab = id
+        browserScreen.visibility = View.GONE
+        homeScreen.visibility = View.GONE
+        soonScreen.visibility = View.GONE
+
+        when (id) {
+            R.id.tab_browser -> {
+                browserScreen.visibility = View.VISIBLE
+                paintAll()
+            }
+            R.id.tab_video -> {
+                showSoon(
+                    "\uD83C\uDFAC", "ترجمات الفيديو الثنائية",
+                    "ترجمة ترجمات يوتيوب مباشرة على الفيديو — سطر أصلي وسطر مترجم.\n\nقيد البناء: بده تجريب على مشغّل يوتيوب الحقيقي.",
+                    "افتح يوتيوب الآن", "https://m.youtube.com"
+                )
+            }
+            R.id.tab_files -> {
+                showSoon(
+                    "\uD83D\uDCC4", "ترجمة PDF ثنائية",
+                    "افتح أي PDF واقرأه بالعربية والإنجليزية معاً.\n\nقيد البناء: نستعمل pdf.js حتى تعمل نفس محرّك الترجمة.",
+                    "افتح ملف PDF", null
+                )
+            }
+            R.id.tab_books -> {
+                showSoon(
+                    "\uD83D\uDCD6", "قارئ الكتب (EPUB)",
+                    "كتاب كامل بالإنجليزي والعربي جنب بعض، فصل ورا فصل.\n\nقيد البناء.",
+                    "افتح كتاب EPUB", null
+                )
+            }
+        }
+    }
+
+    private fun showSoon(emoji: String, title: String, body: String, action: String, url: String?) {
+        soonScreen.visibility = View.VISIBLE
+        soonIcon.text = emoji
+        soonTitle.text = title
+        soonBody.text = body
+        if (url != null) {
+            soonAction.visibility = View.VISIBLE
+            soonAction.text = action
+            soonAction.setOnClickListener {
+                selectTab(R.id.tab_browser)
+                bottomNav.selectedItemId = R.id.tab_browser
+                web.loadUrl(url)
+            }
+        } else {
+            soonAction.visibility = View.GONE
+        }
+    }
+
+    /* ===================== الشاشة الرئيسية ===================== */
+
+    private fun buildHome() {
+        homeRoot.removeAllViews()
+
+        homeRoot.addView(TextView(this).apply {
+            text = "مرحباً \uD83D\uDC4B"
+            setTextColor(C_TEXT)
+            textSize = 24f
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        homeRoot.addView(TextView(this).apply {
+            text = "Immersive-Me · " + Prefs.providerName()
+            setTextColor(C_MUTED)
+            textSize = 12f
+            setPadding(0, dp(2), 0, dp(18))
+        })
+
+        homeRoot.addView(sectionLabel("وصول سريع"))
+        homeRoot.addView(tileRow(listOf(
+            Triple("\uD83C\uDFAC", "يوتيوب", "https://m.youtube.com"),
+            Triple("\uD83D\uDCF0", "BBC", "https://www.bbc.com/news"),
+            Triple("\uD83D\uDD34", "Reddit", "https://www.reddit.com")
+        )))
+        homeRoot.addView(tileRow(listOf(
+            Triple("\uD835\uDD4F", "Twitter", "https://twitter.com"),
+            Triple("\uD83D\uDCDA", "Wikipedia", "https://en.wikipedia.org"),
+            Triple("\uD83D\uDC19", "GitHub", "https://github.com")
+        )))
+
+        homeRoot.addView(sectionLabel("آخر الصفحات · تُترجم تلقائياً"))
+        val hist = Prefs.history
+        if (hist.isEmpty()) {
+            homeRoot.addView(TextView(this).apply {
+                text = "ما زرت أي صفحة بعد. افتح موقعاً من المتصفح وبيظهر هون."
+                setTextColor(Color.parseColor("#5C6478"))
+                textSize = 12.5f
+                setPadding(dp(4), dp(6), 0, 0)
+            })
+        } else {
+            hist.forEach { (u, t) -> homeRoot.addView(recentRow(u, t)) }
+        }
+
+        homeRoot.addView(sectionLabel("المحرّك الحالي"))
+        homeRoot.addView(TextView(this).apply {
+            text = Prefs.providerName()
+            setTextColor(C_BRAND)
+            textSize = 14f
+            setPadding(dp(4), 0, 0, 0)
+        })
+        homeRoot.addView(MaterialButton(this).apply {
+            text = "إدارة المفاتيح والمحرّكات"
+            textSize = 13f
+            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+        })
+    }
+
+    private fun sectionLabel(t: String): TextView = TextView(this).apply {
+        text = t
+        setTextColor(C_MUTED)
+        textSize = 12f
+        setPadding(dp(4), dp(10), 0, dp(10))
+    }
+
+    private fun tileRow(items: List<Triple<String, String, String>>): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(10))
+        }
+        items.forEach { (emoji, label, url) ->
+            val card = MaterialCardView(this).apply {
+                radius = dp(16).toFloat()
+                setCardBackgroundColor(C_SURFACE)
+                cardElevation = 0f
+                strokeWidth = dp(1)
+                strokeColor = ColorStateList.valueOf(C_SURFACE2)
+                val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                lp.setMargins(dp(4), 0, dp(4), 0)
+                layoutParams = lp
+                isClickable = true
+                setOnClickListener {
+                    selectTab(R.id.tab_browser)
+                    bottomNav.selectedItemId = R.id.tab_browser
+                    web.loadUrl(url)
+                }
+            }
+            val inner = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(14), dp(8), dp(14))
+            }
+            inner.addView(TextView(this).apply { text = emoji; textSize = 20f; gravity = Gravity.CENTER })
+            inner.addView(TextView(this).apply {
+                text = label
+                setTextColor(C_MUTED)
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setPadding(0, dp(6), 0, 0)
+            })
+            card.addView(inner)
+            row.addView(card)
+        }
+        return row
+    }
+
+    private fun recentRow(url: String, title: String): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(C_SURFACE)
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+        }
+        val lp = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(0, 0, 0, dp(8))
+        row.layoutParams = lp
+        row.isClickable = true
+        row.setOnClickListener {
+            selectTab(R.id.tab_browser)
+            bottomNav.selectedItemId = R.id.tab_browser
+            web.loadUrl(url)
+        }
+        row.addView(TextView(this).apply {
+            val h = try { Uri.parse(url).host ?: "?" } catch (e: Exception) { "?" }
+            text = h.removePrefix("www.").take(1).uppercase()
+            setTextColor(C_BRAND)
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setBackgroundColor(C_SURFACE2)
+            setPadding(dp(7), dp(5), dp(7), dp(5))
+        })
+        row.addView(TextView(this).apply {
+            text = title
+            setTextColor(C_TEXT)
+            textSize = 12.5f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            val l = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            l.setMargins(dp(10), 0, dp(10), 0)
+            layoutParams = l
+        })
+        row.addView(TextView(this).apply {
+            text = "AR ✓"
+            setTextColor(C_OK)
+            textSize = 9.5f
+            setBackgroundColor(Color.parseColor("#224632D6"))
+            setPadding(dp(7), dp(3), dp(7), dp(3))
+        })
+        return row
+    }
+
+    /* ===================== شريط المتصفح ===================== */
 
     private fun setupToolbar() {
         btnGo.setOnClickListener { go() }
@@ -106,26 +366,17 @@ class MainActivity : AppCompatActivity() {
             Prefs.enabled = on
             if (on) startTranslation() else stopTranslation()
             paintAll()
-            snack(
-                if (on) "الترجمة التلقائية مفعّلة على $currentHost"
-                else "أُوقفت الترجمة التلقائية على $currentHost"
-            )
+            snack(if (on) "الترجمة التلقائية مفعّلة على $currentHost"
+                  else "أُوقفت الترجمة التلقائية على $currentHost")
             true
         }
 
-        btnCfg.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        btnMenu.setOnClickListener { showQuickPanel() }
         tvChip.setOnClickListener { showQuickPanel() }
-        tvStatus.setOnClickListener {
-            val wv = web
-            if (Prefs.enabled) {
-                wv.evaluateJavascript("window.__imtStartAction && window.__imtStartAction();", null)
-            } else snack("اضغط أيقونة الترجمة 译 لتشغيل الترجمة")
-        }
     }
 
     private fun paintAll() {
-        val tint = if (Prefs.enabled) C_OK else C_MUTED
-        btnTr.iconTint = ColorStateList.valueOf(tint)
+        btnTr.iconTint = ColorStateList.valueOf(if (Prefs.enabled) C_OK else C_MUTED)
         tvChip.text = Prefs.target.uppercase()
         if (!Prefs.enabled) {
             tvStatus.text = if (Prefs.isAutoSite(currentHost))
@@ -133,109 +384,81 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** لوحة الإعدادات السريعة — Bottom Sheet */
     private fun showQuickPanel() {
         val sheet = BottomSheetDialog(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(28))
-            setBackgroundColor(Color.parseColor("#161A21"))
+            setBackgroundColor(C_SURFACE)
         }
 
         fun title(t: String, top: Int = 18) {
             root.addView(TextView(this).apply {
-                text = t
-                setTextColor(Color.parseColor("#8B94A7"))
-                textSize = 12f
+                text = t; setTextColor(C_MUTED); textSize = 12f
                 setPadding(0, dp(top), 0, dp(8))
             })
         }
 
         root.addView(TextView(this).apply {
-            text = "إعدادات سريعة"
-            setTextColor(Color.parseColor("#E7EAF2"))
-            textSize = 18f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, dp(10), 0, 0)
+            text = "إعدادات سريعة"; setTextColor(C_TEXT); textSize = 18f
+            setTypeface(typeface, Typeface.BOLD); setPadding(0, dp(10), 0, 0)
         })
 
-        // ---- اللغة ----
         title("لغة الترجمة")
-        val langGroup = ChipGroup(this).apply {
-            isSingleSelection = true
-            isSelectionRequired = true
-        }
+        val langGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
         LANGS.forEach { (code, label) ->
-            val chip = Chip(this).apply {
-                text = label
-                textSize = 13f
-                isCheckable = true
-                isChecked = Prefs.target == code
+            langGroup.addView(Chip(this).apply {
+                text = label; textSize = 13f; isCheckable = true; isChecked = Prefs.target == code
                 setOnClickListener {
                     if (Prefs.target != code) { Prefs.target = code; applyLangChange() }
                     paintAll()
                 }
-            }
-            langGroup.addView(chip)
+            })
         }
         root.addView(langGroup)
 
-        // ---- وضع العرض ----
         title("وضع العرض")
-        val modeGroup = ChipGroup(this).apply {
-            isSingleSelection = true
-            isSelectionRequired = true
-        }
-        listOf(
-            "below" to "ثنائي — تحت الأصل",
-            "blur" to "ضبابي — يظهر بالتمرير",
-            "replace" to "استبدال"
-        ).forEach { (code, label) ->
-            val chip = Chip(this).apply {
-                text = label
-                textSize = 13f
-                isCheckable = true
-                isChecked = Prefs.mode == code
+        val modeGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
+        listOf("below" to "ثنائي", "blur" to "ضبابي", "replace" to "استبدال").forEach { (code, label) ->
+            modeGroup.addView(Chip(this).apply {
+                text = label; textSize = 13f; isCheckable = true; isChecked = Prefs.mode == code
                 setOnClickListener {
-                    Prefs.mode = code
-                    paintAll()
+                    Prefs.mode = code; paintAll()
                     web.evaluateJavascript(
-                        "window.__imtSetMode && window.__imtSetMode(" + JSONObject.quote(code) + ");", null
-                    )
+                        "window.__imtSetMode && window.__imtSetMode(${JSONObject.quote(code)});", null)
                 }
-            }
-            modeGroup.addView(chip)
+            })
         }
         root.addView(modeGroup)
 
-        // ---- ترجمة تلقائية ----
-        title("الموقع الحالي")
-        val sw = MaterialSwitch(this).apply {
-            text = "ترجمة تلقائية على " + (currentHost ?: "هالموقع")
-            textSize = 14f
-            setTextColor(Color.parseColor("#E7EAF2"))
-            isChecked = Prefs.isAutoSite(currentHost)
-            setPadding(0, dp(4), 0, dp(4))
-            setOnCheckedChangeListener { _, checked ->
-                if (Prefs.isAutoSite(currentHost) != checked) {
-                    Prefs.toggleAutoSite(currentHost)
-                    paintAll()
-                }
-            }
-        }
-        root.addView(sw)
+        title("مساعدة القراءة")
+        root.addView(MaterialSwitch(this).apply {
+            text = "ترجمة النص المظلَّل"; textSize = 14f; setTextColor(C_TEXT)
+            isChecked = Prefs.selectionTranslate
+            setOnCheckedChangeListener { _, v -> Prefs.selectionTranslate = v }
+        })
+        root.addView(MaterialSwitch(this).apply {
+            text = "ترجمة صناديق الإدخال"; textSize = 14f; setTextColor(C_TEXT)
+            isChecked = Prefs.inputTranslate
+            setOnCheckedChangeListener { _, v -> Prefs.inputTranslate = v }
+        })
 
-        // ---- المحرّك ----
+        title("الموقع الحالي")
+        root.addView(MaterialSwitch(this).apply {
+            text = "ترجمة تلقائية على " + (currentHost ?: "هالموقع")
+            textSize = 14f; setTextColor(C_TEXT)
+            isChecked = Prefs.isAutoSite(currentHost)
+            setOnCheckedChangeListener { _, _ ->
+                Prefs.toggleAutoSite(currentHost); paintAll()
+            }
+        })
+
         title("محرّك الترجمة")
         root.addView(TextView(this).apply {
-            text = Prefs.providerName()
-            setTextColor(Color.parseColor("#7BA0FF"))
-            textSize = 14f
+            text = Prefs.providerName(); setTextColor(C_BRAND); textSize = 14f
         })
         root.addView(MaterialButton(this).apply {
-            text = "إدارة المفاتيح والمحرّكات"
-            textSize = 13f
-            setPadding(0, dp(6), 0, 0)
+            text = "إدارة المفاتيح والمحرّكات"; textSize = 13f
             setOnClickListener {
                 sheet.dismiss()
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
@@ -269,7 +492,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun snack(msg: String) =
-        Snackbar.make(findViewById(R.id.web), msg, Snackbar.LENGTH_SHORT).show()
+        Snackbar.make(findViewById(R.id.screenHost), msg, Snackbar.LENGTH_SHORT).show()
 
     /* ===================== WebView ===================== */
 
@@ -319,6 +542,10 @@ class MainActivity : AppCompatActivity() {
                 if (Prefs.isAutoSite(currentHost)) Prefs.enabled = true
                 injectTranslator()
                 paintAll()
+                main.postDelayed({
+                    Prefs.addHistory(view?.url, view?.title)
+                    if (homeScreen.visibility == View.VISIBLE) buildHome()
+                }, 600)
             }
         }
     }
@@ -361,7 +588,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && web.canGoBack()) { web.goBack(); return true }
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (lastTab != R.id.tab_browser) {
+                selectTab(R.id.tab_browser); bottomNav.selectedItemId = R.id.tab_browser; return true
+            }
+            if (web.canGoBack()) { web.goBack(); return true }
+        }
         return super.onKeyDown(keyCode, event)
     }
 
@@ -371,12 +603,15 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         paintAll()
         injectedScript = null
+        buildHome()
         web.evaluateJavascript("window.__imtConfigChanged && window.__imtConfigChanged();", null)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra("url")?.let { web.loadUrl(it) }
+        intent.getStringExtra("url")?.let {
+            selectTab(R.id.tab_browser); bottomNav.selectedItemId = R.id.tab_browser; web.loadUrl(it)
+        }
     }
 
     override fun onDestroy() {
@@ -397,17 +632,21 @@ class MainActivity : AppCompatActivity() {
             o.put("mode", Prefs.mode)
             o.put("enabled", Prefs.enabled)
             o.put("provider", Prefs.providerName())
+            o.put("selection", Prefs.selectionTranslate)
+            o.put("input", Prefs.inputTranslate)
             return o.toString()
         }
 
         @JavascriptInterface
         fun translate(id: String, textsJson: String) {
-            if (!Prefs.enabled) { reply(id, "[]"); return }
             val texts: List<String> = try {
                 val a = JSONArray(textsJson)
                 List(a.length()) { a.getString(it) }
             } catch (e: Exception) { emptyList() }
             if (texts.isEmpty()) { reply(id, "[]"); return }
+
+            // الترجمة العادية تتطلب التفعيل؛ ترجمة التحديد والإدخال تعمل دائماً
+            if (texts.size > 1 && !Prefs.enabled) { reply(id, "[]"); return }
 
             pool.execute {
                 val t0 = System.currentTimeMillis()

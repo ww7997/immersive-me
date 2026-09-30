@@ -31,7 +31,21 @@
     '.imt-badge{position:fixed;z-index:2147483647;left:10px;bottom:10px;background:rgba(27,29,34,.92);',
     '  color:#cfd6e4;font:11px/1.4 system-ui,sans-serif;padding:5px 9px;border-radius:8px;',
     '  pointer-events:none;opacity:0;transition:opacity .25s;}',
-    '.imt-badge.on{opacity:1;}'
+    '.imt-badge.on{opacity:1;}',
+    /* ---- ترجمة التحديد ---- */
+    '.imt-sel{position:absolute;z-index:2147483646;max-width:min(340px,88vw);background:#272D38;',
+    '  border:1px solid #3A4252;border-radius:14px;padding:10px 12px;',
+    '  box-shadow:0 10px 30px rgba(0,0,0,.62);color:#E7EAF2;',
+    '  font:13.5px/1.65 system-ui,sans-serif;direction:rtl;text-align:right;}',
+    '.imt-sel .s{font-size:11px;color:#8C94A6;direction:ltr;text-align:left;margin-bottom:7px;',
+    '  max-height:3.4em;overflow:hidden;}',
+    '.imt-sel .b{white-space:pre-wrap;}',
+    '.imt-sel .a{margin-top:9px;display:flex;gap:14px;font-size:11.5px;color:#8B94A7;}',
+    '.imt-sel .a span{cursor:pointer;}',
+    /* ---- ترجمة صناديق الإدخال ---- */
+    '.imt-inp{display:block;margin:5px 0 10px;font:inherit;}',
+    '.imt-inp .t{font-size:.94em;line-height:1.6;direction:rtl;text-align:right;color:inherit;',
+    '  opacity:.95;border-inline-start:3px solid rgba(110,150,255,.6);padding-inline-start:9px;}'
   ].join('\n');
 
   function injectCSS() {
@@ -292,6 +306,136 @@
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
+  /* -------------------- ترجمة النص المظلَّل -------------------- */
+  var selBubble = null;
+  var selTimer = null;
+
+  function hideSel() {
+    if (selBubble) { selBubble.remove(); selBubble = null; }
+  }
+
+  function onSelectionChange() {
+    clearTimeout(selTimer);
+    selTimer = setTimeout(handleSelection, 320);
+  }
+
+  function handleSelection() {
+    if (!CFG.selection) { hideSel(); return; }
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) { hideSel(); return; }
+    var text = (sel.toString() || '').trim();
+    if (text.length < 2 || text.length > 900) { hideSel(); return; }
+
+    var node = sel.anchorNode;
+    var pe = node && (node.nodeType === 1 ? node : node.parentElement);
+    if (pe && pe.closest && pe.closest('.imt-sel,.imt-trans,.imt-inp,.imt-ui')) return;
+
+    var rect = null;
+    try { rect = sel.getRangeAt(0).getBoundingClientRect(); } catch (e) {}
+    if (!rect || (rect.width === 0 && rect.height === 0)) return;
+
+    showSel(rect, text);
+  }
+
+  function showSel(rect, text) {
+    hideSel();
+    selBubble = document.createElement('div');
+    selBubble.className = 'imt-sel';
+    selBubble.setAttribute('data-imt-skip', '1');
+
+    var w = Math.min(340, window.innerWidth * 0.88);
+    var left = rect.left + window.pageXOffset + rect.width / 2 - w / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+    selBubble.style.left = left + 'px';
+    selBubble.style.top = (rect.bottom + window.pageYOffset + 8) + 'px';
+    selBubble.style.width = w + 'px';
+
+    var src = document.createElement('div');
+    src.className = 's';
+    src.textContent = text;
+
+    var body = document.createElement('div');
+    body.className = 'b';
+    body.textContent = '…';
+
+    var acts = document.createElement('div');
+    acts.className = 'a';
+    var aCopy = document.createElement('span'); aCopy.textContent = '📋 نسخ';
+    var aClose = document.createElement('span'); aClose.textContent = '✕ إغلاق';
+    aCopy.addEventListener('click', function (e) {
+      e.stopPropagation();
+      try {
+        if (navigator.clipboard) navigator.clipboard.writeText(body.textContent);
+        else if (ImtNative && ImtNative.notify) ImtNative.notify('النسخ غير مدعوم هون');
+      } catch (err) {}
+    });
+    aClose.addEventListener('click', function (e) { e.stopPropagation(); hideSel(); });
+    acts.appendChild(aCopy); acts.appendChild(aClose);
+
+    selBubble.appendChild(src);
+    selBubble.appendChild(body);
+    selBubble.appendChild(acts);
+    (document.body || document.documentElement).appendChild(selBubble);
+
+    bridgeTranslate([text]).then(function (r) {
+      if (!selBubble) return;
+      var tr = ((r && r[0]) || '').trim();
+      body.textContent = tr || 'تعذّرت الترجمة — جرّب مرة تانية';
+    });
+  }
+
+  document.addEventListener('selectionchange', onSelectionChange);
+  document.addEventListener('mouseup', onSelectionChange, true);
+  document.addEventListener('touchend', function () { setTimeout(onSelectionChange, 60); }, true);
+  document.addEventListener('mousedown', function (e) {
+    if (selBubble && !selBubble.contains(e.target)) hideSel();
+  }, true);
+
+  /* -------------------- ترجمة صناديق الإدخال -------------------- */
+  var BAD_INPUT = ['password', 'email', 'number', 'tel', 'date', 'file', 'checkbox',
+                   'radio', 'range', 'color', 'hidden', 'submit', 'button'];
+
+  function removeInpTr(el) {
+    try {
+      var host = el.parentElement && el.parentElement.parentElement;
+      if (!host) return;
+      var n = host.querySelector('.imt-inp');
+      if (n) n.remove();
+    } catch (e) {}
+  }
+
+  function doInputTr(el, text) {
+    bridgeTranslate([text]).then(function (r) {
+      var tr = ((r && r[0]) || '').trim();
+      if (!tr || !el.isConnected) return;
+      var anchor = el.parentElement;
+      if (!anchor || !anchor.parentElement) return;
+      removeInpTr(el);
+
+      var box = document.createElement('div');
+      box.className = 'imt-inp';
+      box.setAttribute('data-imt-skip', '1');
+      var t = document.createElement('div');
+      t.className = 't';
+      t.textContent = tr;
+      box.appendChild(t);
+      try { anchor.parentElement.insertBefore(box, anchor.nextSibling); } catch (e) {}
+    });
+  }
+
+  document.addEventListener('input', function (e) {
+    if (!CFG.input) return;
+    var el = e.target;
+    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+    if (el.type && BAD_INPUT.indexOf(String(el.type).toLowerCase()) >= 0) return;
+    if (el.closest && el.closest('.imt-sel')) return;
+
+    clearTimeout(el.__imtT);
+    var v = (el.value || '').trim();
+    if (v.length < 3) { removeInpTr(el); return; }
+    el.__imtT = setTimeout(function () { doInputTr(el, v); }, 650);
+  }, true);
+
   /* -------------------- الواجهة البرمجية -------------------- */
   window.__imtStart = function () {
     readConfig();
@@ -327,6 +471,7 @@
 
   window.__imtBoot = function () {
     readConfig();
+    injectCSS();
     if (CFG.enabled) window.__imtStart();
   };
 

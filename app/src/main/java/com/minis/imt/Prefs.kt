@@ -113,6 +113,43 @@ object Prefs {
         return now
     }
 
+    /** ترجمة النص المظلَّل */
+    var selectionTranslate: Boolean
+        get() = sp.getBoolean("selTr", true)
+        set(v) = sp.edit().putBoolean("selTr", v).apply()
+
+    /** ترجمة صناديق الإدخال */
+    var inputTranslate: Boolean
+        get() = sp.getBoolean("inpTr", true)
+        set(v) = sp.edit().putBoolean("inpTr", v).apply()
+
+    // ---------- سجل الصفحات ----------
+    var history: MutableList<Pair<String, String>>
+        get() {
+            val raw = sp.getString("history", null) ?: return mutableListOf()
+            return try {
+                val arr = JSONArray(raw)
+                MutableList(arr.length()) {
+                    val o = arr.getJSONObject(it)
+                    o.optString("u") to o.optString("t")
+                }
+            } catch (e: Exception) { mutableListOf() }
+        }
+        set(list) {
+            val arr = JSONArray()
+            list.take(20).forEach { arr.put(JSONObject().put("u", it.first).put("t", it.second)) }
+            sp.edit().putString("history", arr.toString()).apply()
+        }
+
+    fun addHistory(url: String?, title: String?) {
+        if (url.isNullOrBlank() || title.isNullOrBlank()) return
+        if (!url.startsWith("http")) return
+        if (title.startsWith("http") || title.length < 4) return
+        val cur = history.filter { it.first != url }.toMutableList()
+        cur.add(0, url to title)
+        history = cur
+    }
+
     // ---------- المزوّدون ----------
     var providers: MutableList<Provider>
         get() {
