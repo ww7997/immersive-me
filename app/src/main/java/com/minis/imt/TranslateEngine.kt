@@ -414,6 +414,55 @@ object TranslateEngine {
         }
     }
 
+    /* ==================== ترجمات يوتيوب ==================== */
+
+    /**
+     * يجلب ملف ترجمات يوتيوب ويحوّلو لمصفوفة مقاطع مزامَنة.
+     * الاستدعاء من Kotlin → بلا مشاكل CORS أو حجب.
+     */
+    fun fetchCaptions(baseUrl: String): String {
+        if (!baseUrl.startsWith("http")) throw RuntimeException("رابط الترجمات غير صالح")
+        val url = if (baseUrl.contains("fmt=")) baseUrl else "$baseUrl&fmt=json3"
+        val raw = httpGet(url, 25_000)
+        if (raw.isBlank()) throw RuntimeException("يوتيوب ما رجّع ترجمات (يمكن الفيديو ما عندو)")
+
+        // صيغة json3
+        if (raw.trimStart().startsWith("{")) {
+            val j = JSONObject(raw)
+            val ev = j.optJSONArray("events") ?: JSONArray()
+            val out = JSONArray()
+            for (i in 0 until ev.length()) {
+                val e = ev.optJSONObject(i) ?: continue
+                val segs = e.optJSONArray("segs") ?: continue
+                val sb = StringBuilder()
+                for (k in 0 until segs.length()) sb.append(segs.optJSONObject(k)?.optString("utf8", "") ?: "")
+                val text = sb.toString().replace("\n", " ").trim()
+                if (text.isEmpty() || text == " ") continue
+                val start = e.optLong("tStartMs", 0L)
+                var dur = e.optLong("dDurationMs", 1800L)
+                if (dur <= 0) dur = 1800
+                out.put(JSONObject().put("s", start).put("e", start + dur).put("t", text))
+            }
+            if (out.length() == 0) throw RuntimeException("الترجمات فاضية — يمكن الفيديو ما عندو ترجمات")
+            return out.toString()
+        }
+
+        // صيغة XML (خطة بديلة)
+        val out = JSONArray()
+        for (m in Regex("""<text start="([\d.]+)" dur="([\d.]+)"[^>]*>([\s\S]*?)</text>""").findAll(raw)) {
+            val s = (m.groupValues[1].toDoubleOrNull() ?: 0.0) * 1000
+            val d = (m.groupValues[2].toDoubleOrNull() ?: 1.8) * 1000
+            val t = m.groupValues[3]
+                .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                .replace("&quot;", "\"").replace("&#39;", "'")
+                .replace(Regex("<[^>]+>"), "").trim()
+            if (t.isEmpty()) continue
+            out.put(JSONObject().put("s", s.toLong()).put("e", (s + d).toLong()).put("t", t))
+        }
+        if (out.length() == 0) throw RuntimeException("ما قدرنا نقرأ ملف الترجمات")
+        return out.toString()
+    }
+
     /* ==================== قائمة الموديلات ==================== */
 
     /**

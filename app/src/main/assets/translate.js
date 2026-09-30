@@ -47,7 +47,16 @@
     /* ---- ترجمة صناديق الإدخال ---- */
     '.imt-inp{display:block;margin:5px 0 10px;font:inherit;}',
     '.imt-inp .t{font-size:.94em;line-height:1.6;direction:rtl;text-align:right;color:inherit;',
-    '  opacity:.95;border-inline-start:3px solid rgba(110,150,255,.6);padding-inline-start:9px;}'
+    '  opacity:.95;border-inline-start:3px solid rgba(110,150,255,.6);padding-inline-start:9px;}',
+    /* ---- ترجمات الفيديو (يوتيوب) ---- */
+    '.imt-subs{position:absolute;left:3%;right:3%;bottom:9%;z-index:2147483645;text-align:center;',
+    '  pointer-events:none;display:none;}',
+    '.imt-subs .s1{font-size:13px;line-height:1.4;color:#d6dce8;direction:ltr;',
+    '  text-shadow:0 2px 5px #000,0 0 3px #000;}',
+    '.imt-subs .s2{font-size:17px;line-height:1.45;font-weight:700;color:#fff;margin-top:3px;',
+    '  text-shadow:0 2px 6px #000,0 0 4px #000;}',
+    /* نخفي ترجمات يوتيوب الأصلية لمّا نشتغل — منشان ما يتكرّرو */
+    'html.imt-yt .ytp-caption-window-container{display:none !important;}'
   ].join('\n');
 
   function injectCSS() {
@@ -584,6 +593,269 @@
     document.addEventListener('scroll', handler, { passive: true, capture: true });
   }
 
+  /* ==================== ترجمات يوتيوب الثنائية ==================== */
+  /**
+   * ثلاث طرق بالترتيب:
+   *  ١) مسار الترجمات من بيانات المشغّل (Kotlin) — الأسرع إذا سمح يوتيوب
+   *  ٢) نقرأ cues من عنصر الفيديو نفسه (video.textTracks) — الأضمن من جوّا المتصفح
+   *  ٣) وضع مباشر: نقرأ نص الترجمة المعروض ونترجمو لحظياً — خطة أخيرة
+   */
+  var YT = {
+    cues: [], ov: null, el1: null, el2: null, lastIdx: -2, timer: null,
+    loaded: false, loading: false, waiting: {}, seq: 0,
+    live: false, tries: 0, ccClicked: false, liveLast: '', liveCache: {}
+  };
+
+  function isYouTube() {
+    var h = location.hostname;
+    return /(^|\.)youtube\.com$/.test(h) || h === 'youtu.be';
+  }
+  function isWatchPage() {
+    return /^\/(watch|shorts|embed|live)/.test(location.pathname) || /[?&]v=/.test(location.search);
+  }
+
+  /** يوتيوب أحياناً بيرجّع رابط نسبي — لازم نكمّلو */
+  function ytAbs(u) {
+    if (!u) return null;
+    u = u.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+    if (u.charAt(0) === '/') return location.origin + u;
+    if (!/^https?:/.test(u)) return null;
+    return u;
+  }
+
+  function ytCaptionUrl() {
+    // ١) من كائن المشغّل
+    try {
+      var pr = window.ytInitialPlayerResponse;
+      var tracks = pr && pr.captions && pr.captions.playerCaptionsTracklistRenderer
+                   && pr.captions.playerCaptionsTracklistRenderer.captionTracks;
+      if (tracks && tracks.length) {
+        var pick = null;
+        for (var i = 0; i < tracks.length; i++) if (tracks[i].kind === 'asr') { pick = tracks[i]; break; }
+        if (!pick) pick = tracks[0];
+        var a = ytAbs(pick && pick.baseUrl);
+        if (a) return a;
+      }
+    } catch (e) {}
+
+    // ٢) من سكربتات الصفحة (مضمّن بالـ HTML، وهاد بيشتغل حتى قبل تشغيل الفيديو)
+    try {
+      var scripts = document.querySelectorAll('script');
+      for (var k = 0; k < scripts.length; k++) {
+        var s = scripts[k].textContent || '';
+        if (s.indexOf('captionTracks') < 0) continue;
+        var m = /"captionTracks"\s*:\s*(\[[\s\S]*?\}\s*\])/.exec(s);
+        if (!m) continue;
+        var arr = JSON.parse(m[1]);
+        for (var j = 0; j < arr.length; j++) {
+          var b = ytAbs(arr[j] && arr[j].baseUrl);
+          if (b) return b;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  /** نضغط زر CC إذا الترجمة مطفيّة */
+  function ytEnableCC() {
+    try {
+      var btn = document.querySelector('.ytp-subtitles-button');
+      if (btn && btn.getAttribute('aria-pressed') !== 'true') { btn.click(); return true; }
+    } catch (e) {}
+    try {
+      var p = document.getElementById('movie_player');
+      if (p && p.loadModule) p.loadModule('captions');
+    } catch (e) {}
+    return false;
+  }
+
+  /** نقرأ كل مقاطع الترجمة من عنصر الفيديو */
+  function ytCuesFromTrack() {
+    var v = document.querySelector('video');
+    if (!v || !v.textTracks || !v.textTracks.length) return null;
+    for (var i = 0; i < v.textTracks.length; i++) {
+      var tt = v.textTracks[i];
+      if (!tt.cues || tt.cues.length < 2) continue;
+      var out = [];
+      for (var k = 0; k < tt.cues.length; k++) {
+        var c = tt.cues[k];
+        var t = String(c.text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!t) continue;
+        out.push({ s: Math.round(c.startTime * 1000), e: Math.round(c.endTime * 1000), t: t, tr: '' });
+      }
+      if (out.length > 1) return out;
+    }
+    return null;
+  }
+
+  function ytLiveText() {
+    var els = document.querySelectorAll('.ytp-caption-segment');
+    var s = '';
+    for (var i = 0; i < els.length; i++) s += els[i].textContent;
+    return s.replace(/\s+/g, ' ').trim();
+  }
+
+  function ytReset() {
+    YT.cues = []; YT.loaded = false; YT.loading = false; YT.live = false;
+    YT.lastIdx = -2; YT.waiting = {}; YT.tries = 0; YT.ccClicked = false;
+    YT.liveLast = ''; YT.liveCache = {};
+    document.documentElement.classList.remove('imt-yt');
+    if (YT.ov) { YT.ov.remove(); YT.ov = null; }
+  }
+
+  function ytRequest() {
+    if (YT.loaded || YT.loading) return;
+    var url = ytCaptionUrl();
+    if (!url) return;                       // الطريقة ٢/٣ بتتولّى
+    YT.loading = true;
+    var id = 'c' + (++YT.seq);
+    YT.waiting[id] = true;
+    try { ImtNative.fetchCaptions(id, url); }
+    catch (e) { YT.loading = false; return; }
+    setTimeout(function () {
+      if (YT.waiting[id]) { delete YT.waiting[id]; YT.loading = false; }   // بنكمّل للطريقة ٢
+    }, 20000);
+  }
+
+  window.__imtCaptions = function (id, payload) {
+    if (!YT.waiting[id]) return;
+    delete YT.waiting[id];
+    YT.loading = false;
+    var data;
+    try { data = JSON.parse(payload); } catch (e) { return; }
+    if (!data || data.error || !data.length) return;    // نفشل بصمت ونكمّل للطريقة ٢
+    ytLoadCues(data.slice(0));
+  };
+
+  function ytLoadCues(list) {
+    YT.cues = list;
+    for (var i = 0; i < YT.cues.length; i++) YT.cues[i].tr = YT.cues[i].tr || '';
+    YT.loaded = true;
+    YT.live = false;
+    document.documentElement.classList.add('imt-yt');
+    showBadge('✓ ' + YT.cues.length + ' سطر مترجم');
+    ytTranslateCues();
+  }
+
+  function ytTranslateCues() {
+    var CH = 10;
+    for (var i = 0; i < YT.cues.length; i += CH) {
+      (function (start) {
+        var slice = YT.cues.slice(start, start + CH);
+        bridgeTranslate(slice.map(function (c) { return c.t; }), function (idx, txt) {
+          if (slice[idx] && txt) slice[idx].tr = txt;
+        }).then(function (list) {
+          if (!list) return;
+          for (var k = 0; k < slice.length && k < list.length; k++) {
+            var r = (list[k] || '').trim();
+            if (r) slice[k].tr = r;
+          }
+        })['catch'](function () {});
+      })(i);
+    }
+  }
+
+  function ytEnsureOverlay() {
+    var v = document.querySelector('video');
+    if (!v || !v.parentElement) return null;
+    var host = v.parentElement;
+    if (YT.ov && YT.ov.isConnected && YT.ov.parentElement === host) return YT.ov;
+    if (YT.ov) { try { YT.ov.remove(); } catch (e) {} }
+    YT.ov = document.createElement('div');
+    YT.ov.className = 'imt-subs';
+    YT.ov.setAttribute('data-imt-skip', '1');
+    var a = document.createElement('div'); a.className = 's1';
+    var b = document.createElement('div'); b.className = 's2';
+    YT.ov.appendChild(a); YT.ov.appendChild(b);
+    YT.el1 = a; YT.el2 = b;
+    try {
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+      host.appendChild(YT.ov);
+    } catch (e) { return null; }
+    return YT.ov;
+  }
+
+  function ytHide(show) {
+    if (YT.ov) YT.ov.style.display = show ? 'block' : 'none';
+  }
+
+  function ytTick() {
+    if (!running) return;
+    if (!YT.loaded && !YT.live) {
+      if (!YT.ccClicked && YT.tries % 8 === 0) YT.ccClicked = ytEnableCC();
+      if (YT.tries % 6 === 0) {
+        var c = ytCuesFromTrack();            // الطريقة ٢
+        if (c) { ytLoadCues(c); }
+      }
+      YT.tries++;
+      if (YT.tries > 160 && !YT.live) {       // ~٢٠ ثانية → الوضع المباشر (الطريقة ٣)
+        YT.live = true;
+        document.documentElement.classList.add('imt-yt');
+        showBadge('وضع الحفظ المباشر — ترجمة لحظية');
+      }
+      return;
+    }
+    if (!document.querySelector('video')) return;
+    ytEnsureOverlay();
+
+    if (YT.loaded) {
+      var v = document.querySelector('video');
+      var idx = -1;
+      var ms = v.currentTime * 1000;
+      for (var i = 0; i < YT.cues.length; i++) {
+        if (ms >= YT.cues[i].s && ms < YT.cues[i].e) { idx = i; break; }
+      }
+      if (idx === YT.lastIdx) return;
+      YT.lastIdx = idx;
+      if (idx < 0) { ytHide(false); return; }
+      ytHide(true);
+      YT.el1.textContent = YT.cues[idx].t;
+      YT.el2.textContent = YT.cues[idx].tr || '…';
+      return;
+    }
+
+    // الوضع المباشر
+    var txt = ytLiveText();
+    if (txt === YT.liveLast) return;
+    YT.liveLast = txt;
+    if (!txt) { ytHide(false); return; }
+    ytHide(true);
+    YT.el1.textContent = txt;
+    YT.el2.textContent = YT.liveCache[txt] || '…';
+    if (YT.liveCache[txt]) return;
+    (function (key) {
+      bridgeTranslate([key]).then(function (r) {
+        var t = ((r && r[0]) || '').trim();
+        if (!t) return;
+        YT.liveCache[key] = t;
+        if (YT.liveLast === key && YT.el2) YT.el2.textContent = t;
+      })['catch'](function () {});
+    })(txt);
+  }
+
+  function ytStart() {
+    if (!isYouTube() || !isWatchPage()) return;
+    if (!YT.timer) YT.timer = setInterval(ytTick, 130);
+    ytRequest();
+  }
+
+  function ytStop() {
+    if (YT.timer) { clearInterval(YT.timer); YT.timer = null; }
+    ytHide(false);
+  }
+
+  window.__imtYtReset = function () { ytReset(); if (running) setTimeout(ytStart, 1500); };
+
+  window.addEventListener('yt-navigate-finish', function () { window.__imtYtReset(); });
+  document.addEventListener('yt-page-data-updated', function () {
+    if (running && !YT.loaded && !YT.live && !YT.loading) setTimeout(ytStart, 800);
+  });
+  setInterval(function () {
+    if (!isYouTube()) return;
+    if (location.href !== YT.lastHref) { YT.lastHref = location.href; window.__imtYtReset(); }
+  }, 1500);
+  YT.lastHref = location.href;
+
   /* -------------------- الواجهة البرمجية -------------------- */
   window.__imtStart = function () {
     readConfig();
@@ -601,6 +873,7 @@
     }
     found.forEach(enqueue);
     startAutoLoad();
+    setTimeout(ytStart, 1500);          // ترجمات الفيديو (يوتيوب)
     showBadge('Immersive-Me · ' + CFG.target + ' · ' + (CFG.provider || '') + ' · ' + found.length + ' مقطع');
   };
 
@@ -608,6 +881,7 @@
     running = false;
     queue = [];
     firstBatch = true;
+    ytStop();
     resetAll();
     showBadge('أُوقفت الترجمة');
   };

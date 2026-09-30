@@ -751,6 +751,22 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun fetchCaptions(id: String, url: String) {
+            pool.execute {
+                val payload: String = try {
+                    TranslateEngine.fetchCaptions(url)
+                } catch (e: Exception) {
+                    "{\"error\":" + JSONObject.quote(TranslateEngine.describe(e)) + "}"
+                }
+                main.post {
+                    val js = "window.__imtCaptions(" + JSONObject.quote(id) + "," +
+                             JSONObject.quote(payload) + ")"
+                    web.evaluateJavascript(js, null)
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun status(done: Int, total: Int) {
             main.post {
                 val speed = if (lastBatchMs > 0)
