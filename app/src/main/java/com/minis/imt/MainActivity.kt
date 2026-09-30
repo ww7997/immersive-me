@@ -89,6 +89,8 @@ class MainActivity : AppCompatActivity() {
     /** نسخة سطح المكتب — ضرورية ليوتيوب: موقع الموبايل ما عندو زر ترجمات */
     private val UA_DESKTOP = UA.replace(" Mobile", "")
 
+    private var ytFixAt = 0L
+
     /** يختار وكيل المستخدم المناسب للرابط قبل التحميل */
     private fun applyUaFor(url: String?) {
         val h = hostOf(url) ?: ""
@@ -188,7 +190,7 @@ class MainActivity : AppCompatActivity() {
                 showSoon(
                     "\uD83C\uDFAC", "ترجمات الفيديو الثنائية",
                     "ترجمة ترجمات يوتيوب مباشرة على الفيديو — سطر أصلي وسطر مترجم.\n\nقيد البناء: بده تجريب على مشغّل يوتيوب الحقيقي.",
-                    "افتح يوتيوب الآن", "https://m.youtube.com"
+                    "افتح يوتيوب الآن", "https://www.youtube.com"
                 )
             }
             R.id.tab_files -> {
@@ -648,10 +650,16 @@ class MainActivity : AppCompatActivity() {
                     // يوتيوب: نمنع التحويل لموقع الموبايل — لأنو ما عندو زر ترجمات
                     val h = u.host ?: ""
                     if (h == "m.youtube.com" && !Prefs.desktopMode) {
+                        val now = System.currentTimeMillis()
+                        if (now - ytFixAt <= 8000) return true          // حماية من الحلقة
+                        ytFixAt = now
                         val fixed = u.toString().replace("//m.youtube.com", "//www.youtube.com")
                         applyUaFor(fixed)
                         view?.loadUrl(fixed)
                         return true
+                    }
+                    if (h.contains("youtube.com") && web.settings.userAgentString != UA_DESKTOP && !Prefs.desktopMode) {
+                        web.settings.userAgentString = UA_DESKTOP
                     }
                     return false
                 }
@@ -662,14 +670,18 @@ class MainActivity : AppCompatActivity() {
                 urlBar.setText(url ?: "")
                 val h = hostOf(url)
 
-                // يوتيوب الموبايل ما عندو زر ترجمات — نرجّعو لسطح المكتب فوراً
+                // يوتيوب الموبايل ما عندو زر ترجمات — نرجّعو لسطح المكتب مرة وحدة (بحماية من الحلقة)
                 if (h == "m.youtube.com" && !Prefs.desktopMode && url != null) {
-                    val fixed = url.replace("//m.youtube.com", "//www.youtube.com")
-                    web.settings.userAgentString = UA_DESKTOP
-                    view?.loadUrl(fixed)
+                    val now = System.currentTimeMillis()
+                    if (now - ytFixAt > 8000) {
+                        ytFixAt = now
+                        val fixed = url.replace("//m.youtube.com", "//www.youtube.com")
+                        web.settings.userAgentString = UA_DESKTOP
+                        web.post { web.loadUrl(fixed) }
+                    }
                     return
                 }
-                if (h != null && (h.contains("youtube.com") || h.contains("youtu.be")) && !Prefs.desktopMode) {
+                if (h != null && h.contains("youtube.com") && !Prefs.desktopMode) {
                     if (web.settings.userAgentString != UA_DESKTOP) web.settings.userAgentString = UA_DESKTOP
                 }
                 currentHost = h
