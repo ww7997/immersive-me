@@ -57,8 +57,13 @@
     '  display:inline-block;padding:2px 10px;background:rgba(0,0,0,.45);border-radius:8px;',
     '  text-shadow:0 1px 4px #000;}',
     '.imt-subs.only .s1{display:none;}',
-    /* نخفي ترجمات يوتيوب الأصلية بدون ما نوقفها — نقرأ منها */
-    'html.imt-yt .ytp-caption-window-container{opacity:0 !important;}'
+    /* نخفي ترجمات يوتيوب الأصلية بصرياً — بدون ما نوقف تحديثها */
+    'html.imt-yt .ytp-caption-window-container,',
+    'html.imt-yt .caption-window,',
+    'html.imt-yt .ytp-caption-window-bottom,',
+    'html.imt-yt .ytp-caption-segment,',
+    'html.imt-yt .captions-text{',
+    '  opacity:0 !important;visibility:hidden !important;}'
   ].join('\n');
 
   function injectCSS() {
@@ -833,6 +838,20 @@
     return null;
   }
 
+  function ytHideNative() {
+    try {
+      var els = document.querySelectorAll(
+        '.ytp-caption-window-container,.caption-window,.ytp-caption-segment,.captions-text');
+      for (var i = 0; i < els.length; i++) {
+        var e = els[i];
+        if (e.style.visibility !== 'hidden') {
+          e.style.opacity = '0';
+          e.style.visibility = 'hidden';
+        }
+      }
+    } catch (e) {}
+  }
+
   function ytSetText(tr, orig) {
     if (!YT.ov) return;
     YT.ov.style.display = 'block';
@@ -861,6 +880,7 @@
 
     if (!document.querySelector('video')) return;
     ytEnsureOverlay();
+    ytHideNative();
 
     /* ---- الطريقة الأقوى: نتبع اللي يوتيوب عم يعرضو (مزامنة مثالية مع الصوت) ---- */
     var shown = ytLiveText();
