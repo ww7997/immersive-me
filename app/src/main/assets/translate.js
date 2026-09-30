@@ -94,7 +94,7 @@
       } catch (e) { delete pending[id]; resolve([]); }
       setTimeout(function () {
         if (pending[id]) { delete pending[id]; resolve([]); }
-      }, 180000);
+      }, 240000);
     });
   }
 
@@ -235,7 +235,7 @@
   var queue = [];
   var inflight = 0;
   var running = false;
-  var CONC = 3;
+  var CONC = 2;
 
   function enqueue(el) {
     if (!running || el.__imtDone || el.__imtQueued) return;
@@ -249,7 +249,7 @@
     if (!running || inflight >= CONC || !queue.length) return;
 
     var batch = [];
-    while (batch.length < 8 && queue.length) {
+    while (batch.length < 5 && queue.length) {
       var el = queue.shift();
       el.__imtQueued = false;
       if (!el.isConnected || el.__imtDone) continue;

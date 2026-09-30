@@ -143,18 +143,22 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />
 
-                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
                     android:id="@+id/fabTr"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom|end"
-                    android:layout_margin="18dp"
-                    android:alpha="0.88"
+                    android:layout_margin="16dp"
+                    android:alpha="0.95"
+                    android:text="ترجمة"
+                    android:textColor="@color/muted"
+                    android:textSize="14sp"
                     app:backgroundTint="@color/surface2"
                     app:elevation="8dp"
-                    app:fabSize="normal"
-                    app:srcCompat="@drawable/ic_translate"
-                    app:tint="@color/muted" />
+                    app:icon="@drawable/ic_translate"
+                    app:iconPadding="8dp"
+                    app:iconSize="20dp"
+                    app:iconTint="@color/muted" />
             </FrameLayout>
         </LinearLayout>
 

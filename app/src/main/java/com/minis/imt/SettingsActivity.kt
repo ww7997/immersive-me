@@ -401,20 +401,40 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun runTest() {
         syncActive()
-        val p = Prefs.activeProvider()
-        if (p != null && p.baseUrl.isBlank()) { snack("عبّي Base URL أول"); return }
-        if (p != null && p.model.isBlank()) { snack("عبّي اسم الموديل أول"); return }
         statusTv.text = "جاري الاختبار…"
         Thread {
-            val out = try {
-                val r = TranslateEngine.translate(listOf("The quick brown fox jumps over the lazy dog."), Prefs.target)
-                "✓ نجح — الرد:\n" + (r.firstOrNull() ?: "(فارغ)")
-            } catch (e: Exception) {
-                "✗ فشل — " + (e.message ?: e.javaClass.simpleName)
+            val sb = StringBuilder()
+            sb.append("المحرّك: ").append(Prefs.effectiveName()).append("\n\n")
+
+            // ---- اختبار ١: مقطع واحد ----
+            TranslateEngine.clearError()
+            val one = try {
+                TranslateEngine.translate(listOf("Good morning, how are you today?"), Prefs.target)
+                    .firstOrNull() ?: ""
+            } catch (e: Exception) { "" }
+            if (one.isNotBlank()) sb.append("✓ مقطع واحد نجح:\n  ").append(one).append("\n\n")
+            else sb.append("✗ مقطع واحد فشل: ").append(TranslateEngine.lastError ?: "فشل بلا رسالة").append("\n\n")
+
+            // ---- اختبار ٢: دفعة من ٣ (هون بيتكشّف مشكل التركيب) ----
+            TranslateEngine.clearError()
+            val three = try {
+                TranslateEngine.translate(
+                    listOf("The cat sits on the mat.", "Water boils at one hundred degrees.",
+                           "She reads a book every evening."), Prefs.target)
+            } catch (e: Exception) { emptyList() }
+            val ok = three.count { it.isNotBlank() }
+            if (ok == 3) {
+                sb.append("✓ الدفعة (٣ مقاطع) نجحت:\n")
+                three.forEachIndexed { i, t -> sb.append("  [${i + 1}] ").append(t).append("\n") }
+            } else {
+                sb.append("✗ الدفعة فشلت — نجح ").append(ok).append(" من ٣\n")
+                sb.append("  السبب: ").append(TranslateEngine.lastError ?: "؟").append("\n")
             }
+
+            val text = sb.toString()
             runOnUiThread {
-                statusTv.text = out
-                snack(if (out.startsWith("✓")) "نجح الاختبار" else "فشل الاختبار — التفاصيل بالأسفل")
+                statusTv.text = text
+                snack(if (text.contains("✗")) "في فشل — شوف التفاصيل تحت" else "كل الاختبارات نجحت ✓")
             }
         }.start()
     }

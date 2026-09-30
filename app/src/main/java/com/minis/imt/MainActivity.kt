@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var urlBar: EditText
     private lateinit var progress: ProgressBar
     private lateinit var btnGo: MaterialButton
-    private lateinit var fabTr: com.google.android.material.floatingactionbutton.FloatingActionButton
+    private lateinit var fabTr: com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
     private lateinit var btnMenu: MaterialButton
     private lateinit var tvStatus: TextView
     private lateinit var tvChip: TextView
@@ -396,7 +396,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun paintAll() {
-        fabTr.imageTintList = ColorStateList.valueOf(if (Prefs.enabled) C_OK else C_MUTED)
+        if (Prefs.enabled) {
+            fabTr.text = "مترجم ✓"
+            fabTr.backgroundTintList = ColorStateList.valueOf(C_OK)
+            fabTr.imageTintList = ColorStateList.valueOf(Color.parseColor("#062516"))
+            fabTr.setTextColor(Color.parseColor("#062516"))
+        } else {
+            fabTr.text = "ترجمة"
+            fabTr.backgroundTintList = ColorStateList.valueOf(C_SURFACE2)
+            fabTr.imageTintList = ColorStateList.valueOf(C_MUTED)
+            fabTr.setTextColor(C_MUTED)
+        }
         tvChip.text = Prefs.target.uppercase()
         if (!Prefs.enabled) {
             tvStatus.text = if (Prefs.isAutoSite(currentHost))
@@ -514,6 +524,17 @@ class MainActivity : AppCompatActivity() {
     private fun snack(msg: String) =
         Snackbar.make(findViewById(R.id.screenHost), msg, Snackbar.LENGTH_SHORT).show()
 
+    private var lastShownError: String? = null
+
+    /** يعرض خطأ المحرّك مرة وحدة لكل خطأ جديد */
+    private fun showEngineError(err: String) {
+        if (err == lastShownError) return
+        lastShownError = err
+        tvStatus.text = "⚠️ $err"
+        tvStatus.setTextColor(Color.parseColor("#FF8A8A"))
+        Snackbar.make(findViewById(R.id.screenHost), "⚠️ $err", Snackbar.LENGTH_LONG).show()
+    }
+
     /* ===================== WebView ===================== */
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -598,6 +619,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTranslation() {
+        lastShownError = null
+        TranslateEngine.clearError()
+        tvStatus.setTextColor(C_MUTED)
         web.evaluateJavascript("window.__imtStart && window.__imtStart();", null)
         tvStatus.text = "عم يترجم…  ·  " + Prefs.effectiveName()
     }
@@ -675,6 +699,7 @@ class MainActivity : AppCompatActivity() {
                     List(texts.size) { "" }
                 }
                 Log.d("IMT", "batch ${texts.size} in ${System.currentTimeMillis() - t0}ms")
+                TranslateEngine.lastError?.let { err -> main.post { showEngineError(err) } }
                 reply(id, JSONArray(out).toString())
             }
         }
