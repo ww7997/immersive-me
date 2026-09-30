@@ -56,14 +56,7 @@
     '.imt-subs .s2{font-size:16px;line-height:1.4;font-weight:700;color:#fff;',
     '  display:inline-block;padding:2px 10px;background:rgba(0,0,0,.45);border-radius:8px;',
     '  text-shadow:0 1px 4px #000;}',
-    '.imt-subs.only .s1{display:none;}',
-    /* نخفي ترجمات يوتيوب الأصلية بصرياً — بدون ما نوقف تحديثها */
-    'html.imt-yt .ytp-caption-window-container,',
-    'html.imt-yt .caption-window,',
-    'html.imt-yt .ytp-caption-window-bottom,',
-    'html.imt-yt .ytp-caption-segment,',
-    'html.imt-yt .captions-text{',
-    '  opacity:0 !important;visibility:hidden !important;}'
+    '.imt-subs.only .s1{display:none;}'
   ].join('\n');
 
   function injectCSS() {
@@ -600,6 +593,60 @@
     document.addEventListener('scroll', handler, { passive: true, capture: true });
   }
 
+  /* ===== الطريقة الذكية: نستبدل نص يوتيوب نفسه بدل ما نبني تراكب ===== */
+  var YR = { cache: {}, miss: {}, last: '' };
+
+  function ytReplaceTick() {
+    var win = document.querySelector('.caption-window');
+    if (!win) return;
+
+    var txt = (win.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!txt) return;
+    if (txt === win.__imtOut) return;        // نحنا اللي كتبناها
+    if (txt === win.__imtSrc) return;        // ما تغيّرت من يوتيوب
+
+    win.__imtSrc = txt;
+    var k = ytNorm(txt);
+    if (!k) return;
+
+    var t = YR.cache[k];
+    if (!t && YT.loaded) {
+      var hit = ytLookup(txt);
+      if (hit && hit.tr) t = hit.tr;
+    }
+    if (t) {
+      ytWriteCaption(win, t, txt);
+      return;
+    }
+
+    // ترجمة لحظية (ما لقيناها جاهزة)
+    ytWriteCaption(win, '…', txt);
+    if (YR.miss[k]) return;
+    YR.miss[k] = 1;
+    bridgeTranslate([txt]).then(function (r) {
+      var tr = ((r && r[0]) || '').trim();
+      if (!tr) { delete YR.miss[k]; return; }
+      YR.cache[k] = tr;
+      var w = document.querySelector('.caption-window');
+      if (w && w.textContent && ytNorm(w.textContent) === k) ytWriteCaption(w, tr, txt);
+    })['catch'](function () { delete YR.miss[k]; });
+  }
+
+  function ytWriteCaption(win, tr, orig) {
+    win.textContent = '';
+    if (CFG.subs === 'both') {
+      var a = document.createElement('span');
+      a.textContent = orig;
+      a.style.cssText = 'display:block;font-size:.72em;opacity:.8;direction:ltr;';
+      win.appendChild(a);
+    }
+    var b = document.createElement('span');
+    b.textContent = tr;
+    b.style.cssText = 'display:block;font-weight:600;';
+    win.appendChild(b);
+    win.__imtOut = tr;
+  }
+
   /* ==================== ترجمات يوتيوب الثنائية ==================== */
   /**
    * ثلاث طرق بالترتيب:
@@ -879,6 +926,14 @@
     }
 
     if (!document.querySelector('video')) return;
+
+    /* ---- الأفضل: نستبدل نص ترجمات يوتيوب نفسه (تنسيق ومزامنة مثاليين) ---- */
+    ytReplaceTick();
+    if (document.querySelector('.caption-window')) {
+      if (YT.ov) ytHide(false);          // ما منحتاج تراكب
+      return;
+    }
+
     ytEnsureOverlay();
     ytHideNative();
 
