@@ -119,6 +119,10 @@
     IFRAME: 1, VIDEO: 1, AUDIO: 1, IMG: 1, BUTTON: 1, CITE: 1
   };
   var SKIP_SEL = '.notranslate,[translate="no"],.imt-trans,.imt-orig,[contenteditable="true"],[data-imt-skip]';
+  /* ما نترجم أي شي جوّا هدول — حتى لو الأبناء عناصر عادية */
+  var SKIP_ANC = 'pre,code,kbd,samp,var,textarea,select,option,script,style,noscript,' +
+                 'svg,canvas,math,.imt-trans,.imt-orig,.imt-sel,.imt-inp,.imt-inp *,' +
+                 '.notranslate,[translate="no"],[contenteditable="true"],[data-imt-skip],.mw-highlight,.highlight';
   var CAND_SEL = 'p,li,h1,h2,h3,h4,h5,h6,td,th,dd,dt,blockquote,figcaption,summary,caption,' +
                  'div,span,article,section,main,aside';
   var BLOCKY = /^(block|list-item|table-cell|table-caption|flex|grid)$/;
@@ -135,12 +139,19 @@
 
   var MIN_LEN = 8;
 
+  /** هل العنصر ظاهر فعلاً؟ — نتجاهل المخفي (قوائم مطويّة، نوافذ مسكّرة…) */
+  function isRendered(el) {
+    try { return el.getClientRects().length > 0; } catch (e) { return true; }
+  }
+
   function eligible(el) {
     if (SKIP_TAGS[el.tagName]) return false;
     if (el.isContentEditable) return false;
     if (el.closest(SKIP_SEL)) return false;
     if (el === document.body || el === document.documentElement) return false;
+    if (el.closest(SKIP_ANC)) return false;
     if (!isBlocky(el)) return false;
+    if (!isRendered(el)) return false;
     if (el.querySelector(CAND_SEL)) return false;
     var t = el.innerText || '';
     var min = (el.tagName === 'DIV' || el.tagName === 'SPAN') ? 14 : MIN_LEN;
@@ -202,7 +213,8 @@
           var p = n.parentElement;
           if (!p) return NodeFilter.FILTER_REJECT;
           if (SKIP_TAGS[p.tagName]) return NodeFilter.FILTER_REJECT;
-          if (p.closest && p.closest(SKIP_SEL)) return NodeFilter.FILTER_REJECT;
+          if (p.closest && p.closest(SKIP_ANC)) return NodeFilter.FILTER_REJECT;
+          if (!isRendered(p)) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         }
       });
@@ -242,25 +254,26 @@
 
     var tag = el.tagName;
     var blocky = isBlocky(el);
-
-    // عنصر inline (متل span بعنوان يوتيوب) → الترجمة سطر جديد تحته
-    if (!blocky) {
-      node.className = 'imt-trans imt-block';
-      try { el.insertAdjacentElement('afterend', node); return; }
-      catch (e) { /* نكمل بالطريقة العادية */ }
-    }
-
     var inside = (tag === 'TD' || tag === 'TH' || tag === 'CAPTION' ||
                   tag === 'SUMMARY' || tag === 'LI');
 
+    /* ---- وضع الاستبدال: يشتغل مع المضمّن والكتلي ---- */
     if (CFG.mode === 'replace') {
       var orig = document.createElement('span');
       orig.className = 'imt-orig';
       orig.setAttribute('data-imt-skip', '1');
       while (el.firstChild) orig.appendChild(el.firstChild);
       el.appendChild(orig);
+      if (!blocky) node.className = 'imt-trans imt-block';
       el.appendChild(node);
       return;
+    }
+
+    // عنصر مضمّن (متل span بعنوان يوتيوب) → الترجمة سطر جديد تحته
+    if (!blocky) {
+      node.className = 'imt-trans imt-block';
+      try { el.insertAdjacentElement('afterend', node); return; }
+      catch (e) { /* نكمل بالطريقة العادية */ }
     }
 
     if (inside) el.appendChild(node);
