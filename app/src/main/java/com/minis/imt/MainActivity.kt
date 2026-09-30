@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private var currentHost: String? = null
     private var lastTab = R.id.tab_browser
     private var homeVisible = false
+    private var suppressNav = false
 
     private val C_BRAND = Color.parseColor("#7BA0FF")
     private val C_OK = Color.parseColor("#46D68C")
@@ -114,7 +115,9 @@ class MainActivity : AppCompatActivity() {
         paintAll()
 
         if (savedInstanceState == null) {
+            suppressNav = true
             bottomNav.selectedItemId = R.id.tab_browser
+            suppressNav = false
             showHome()                       // نبدأ من الشاشة الرئيسية
             web.loadUrl(intent?.getStringExtra("url") ?: Prefs.homePage)
         } else {
@@ -129,10 +132,13 @@ class MainActivity : AppCompatActivity() {
     private fun setupNav() {
         bottomNav.setOnItemSelectedListener(object : NavigationBarView.OnItemSelectedListener {
             override fun onNavigationItemSelected(item: android.view.MenuItem): Boolean {
+                if (suppressNav) return true          // تغيير برمجي، مو ضغطة مستخدم
                 when (item.itemId) {
                     R.id.tab_settings -> {
+                        suppressNav = true
                         startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
                         bottomNav.selectedItemId = lastTab
+                        suppressNav = false
                         return false
                     }
                     R.id.tab_browser -> {
@@ -191,6 +197,15 @@ class MainActivity : AppCompatActivity() {
         buildHome()
     }
 
+    /** فتح المتصفح على رابط — بلا ما تتشغّل قفزة التنقّل */
+    private fun goBrowser(url: String?) {
+        suppressNav = true
+        bottomNav.selectedItemId = R.id.tab_browser
+        suppressNav = false
+        selectTab(R.id.tab_browser)
+        if (!url.isNullOrBlank()) web.loadUrl(url)
+    }
+
     private fun showSoon(emoji: String, title: String, body: String, action: String, url: String?) {
         soonScreen.visibility = View.VISIBLE
         soonIcon.text = emoji
@@ -199,11 +214,7 @@ class MainActivity : AppCompatActivity() {
         if (url != null) {
             soonAction.visibility = View.VISIBLE
             soonAction.text = action
-            soonAction.setOnClickListener {
-                selectTab(R.id.tab_browser)
-                bottomNav.selectedItemId = R.id.tab_browser
-                web.loadUrl(url)
-            }
+            soonAction.setOnClickListener { goBrowser(url) }
         } else {
             soonAction.visibility = View.GONE
         }
@@ -289,11 +300,7 @@ class MainActivity : AppCompatActivity() {
                 lp.setMargins(dp(4), 0, dp(4), 0)
                 layoutParams = lp
                 isClickable = true
-                setOnClickListener {
-                    selectTab(R.id.tab_browser)
-                    bottomNav.selectedItemId = R.id.tab_browser
-                    web.loadUrl(url)
-                }
+                setOnClickListener { goBrowser(url) }
             }
             val inner = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -327,11 +334,7 @@ class MainActivity : AppCompatActivity() {
         lp.setMargins(0, 0, 0, dp(8))
         row.layoutParams = lp
         row.isClickable = true
-        row.setOnClickListener {
-            selectTab(R.id.tab_browser)
-            bottomNav.selectedItemId = R.id.tab_browser
-            web.loadUrl(url)
-        }
+        row.setOnClickListener { goBrowser(url) }
         row.addView(TextView(this).apply {
             val h = try { Uri.parse(url).host ?: "?" } catch (e: Exception) { "?" }
             text = h.removePrefix("www.").take(1).uppercase()
@@ -607,7 +610,7 @@ class MainActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (lastTab != R.id.tab_browser) {
-                selectTab(R.id.tab_browser); bottomNav.selectedItemId = R.id.tab_browser; return true
+                goBrowser(null); return true
             }
             if (web.canGoBack()) { web.goBack(); return true }
         }
@@ -626,9 +629,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra("url")?.let {
-            selectTab(R.id.tab_browser); bottomNav.selectedItemId = R.id.tab_browser; web.loadUrl(it)
-        }
+        intent.getStringExtra("url")?.let { goBrowser(it) }
     }
 
     override fun onDestroy() {

@@ -284,7 +284,9 @@ class SettingsActivity : AppCompatActivity() {
                         nameEt.setText(p[0]); baseEt.setText(p[1]); modelEt.setText(p[2])
                         syncActive()
                         fillFields()
-                        snack("تم تعبئة ${p[0]} — ضع المفتاح ثم اضغط اختبار")
+                        providerBtn.text = p[0]
+                        nameTil.error = null
+                        snack("✓ تعبّى «${p[0]}» — الحقول فوق. ضع المفتاح ثم اضغط اختبار")
                     }
                 })
             }
@@ -340,6 +342,7 @@ class SettingsActivity : AppCompatActivity() {
                 Prefs.activeProviderId = if (which == 0) Provider.GOOGLE_ID else providers[which - 1].id
                 d.dismiss()
                 fillFields()
+                snack("المحرّك الفعّال: " + Prefs.providerName())
             }
             .setNegativeButton("إلغاء", null)
             .show()
