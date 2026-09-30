@@ -24,6 +24,8 @@
     '.imt-trans{display:block;margin:.2em 0 .45em;font:inherit;line-height:1.55;color:inherit;',
     '  opacity:.95;border-inline-start:3px solid rgba(110,150,255,.6);padding-inline-start:.55em;}',
     'span.imt-trans{display:inline;border:0;padding:0;margin:0;}',
+    'span.imt-trans.imt-block{display:block;border-inline-start:3px solid rgba(110,150,255,.6);',
+    '  padding-inline-start:.5em;margin:.2em 0 .3em;}',
     'html.imt-mode-blur .imt-trans{filter:blur(4.5px);transition:filter .15s ease;cursor:pointer;}',
     'html.imt-mode-blur .imt-trans:hover{filter:none;}',
     'html.imt-mode-replace .imt-orig{display:none;}',
@@ -152,14 +154,67 @@
     return t.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  /** هل العنصر قريب من الشاشة؟ — نترجم اللي قدامك أول، والباقي مع التمرير */
+  function nearViewport(el) {
+    if (!CFG.lazy) return true;
+    try {
+      var r = el.getBoundingClientRect();
+      var vh = window.innerHeight || 800;
+      return r.bottom > -1400 && r.top < vh + 1400;
+    } catch (e) { return true; }
+  }
+
   function collect() {
     var out = [];
+    var seen = new Set();
     var list;
     try { list = document.body.querySelectorAll(CAND_SEL); } catch (e) { return out; }
-    for (var i = 0; i < list.length && out.length < 3000; i++) {
+    for (var i = 0; i < list.length && out.length < 2500; i++) {
       var el = list[i];
-      if (el.__imtDone) continue;
-      if (eligible(el)) out.push(el);
+      if (el.__imtDone || seen.has(el)) continue;
+      if (eligible(el)) { seen.add(el); out.push(el); }
+    }
+    // طبقة ثانية: عُدّ عُقد النص مباشرة — تلتقط المواقع اللي بتستعمل <span> (يوتيوب، ريديت…)
+    var tn = collectTextNodes();
+    for (var j = 0; j < tn.length && out.length < 4000; j++) {
+      if (!seen.has(tn[j])) { seen.add(tn[j]); out.push(tn[j]); }
+    }
+    // نرجّع بس اللي قريب من الشاشة — الباقي بينضاف مع التمرير
+    if (CFG.lazy) {
+      var vis = [];
+      for (var k = 0; k < out.length; k++) if (nearViewport(out[k])) vis.push(out[k]);
+      return vis;
+    }
+    return out;
+  }
+
+  /** كل عنصر بيحتوي نصاً مباشراً — بلا شرط block و بلا شرط "ما تحته عناصر" */
+  function collectTextNodes() {
+    var out = [];
+    if (!document.body) return out;
+    var seen = new Set();
+    var walker;
+    try {
+      walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (n) {
+          var v = n.nodeValue;
+          if (!v || v.trim().length < MIN_LEN) return NodeFilter.FILTER_REJECT;
+          var p = n.parentElement;
+          if (!p) return NodeFilter.FILTER_REJECT;
+          if (SKIP_TAGS[p.tagName]) return NodeFilter.FILTER_REJECT;
+          if (p.closest && p.closest(SKIP_SEL)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+    } catch (e) { return out; }
+
+    var node;
+    while ((node = walker.nextNode())) {
+      var p = node.parentElement;
+      if (!p || seen.has(p) || p.__imtDone || p.__imtQueued) continue;
+      seen.add(p);
+      out.push(p);
+      if (out.length > 1500) break;
     }
     return out;
   }
@@ -185,8 +240,17 @@
     node.textContent = text;
 
     var tag = el.tagName;
+    var blocky = isBlocky(el);
+
+    // عنصر inline (متل span بعنوان يوتيوب) → الترجمة سطر جديد تحته
+    if (!blocky) {
+      node.className = 'imt-trans imt-block';
+      try { el.insertAdjacentElement('afterend', node); return; }
+      catch (e) { /* نكمل بالطريقة العادية */ }
+    }
+
     var inside = (tag === 'TD' || tag === 'TH' || tag === 'CAPTION' ||
-                  tag === 'SUMMARY' || tag === 'LI' || !isBlocky(el));
+                  tag === 'SUMMARY' || tag === 'LI');
 
     if (CFG.mode === 'replace') {
       var orig = document.createElement('span');
@@ -236,6 +300,12 @@
   var inflight = 0;
   var running = false;
   var CONC = 2;
+  var BATCH = 5;
+
+  function tuneFromConfig() {
+    CONC = CFG.conc || 2;
+    BATCH = CFG.batch || 5;
+  }
 
   function enqueue(el) {
     if (!running || el.__imtDone || el.__imtQueued) return;
@@ -249,7 +319,7 @@
     if (!running || inflight >= CONC || !queue.length) return;
 
     var batch = [];
-    while (batch.length < 5 && queue.length) {
+    while (batch.length < BATCH && queue.length) {
       var el = queue.shift();
       el.__imtQueued = false;
       if (!el.isConnected || el.__imtDone) continue;
@@ -436,6 +506,29 @@
     el.__imtT = setTimeout(function () { doInputTr(el, v); }, 650);
   }, true);
 
+  /* -------------------- التحميل التدريجي مع التمرير -------------------- */
+  var loadTimer = null;
+
+  function startAutoLoad() {
+    if (window.__imtScrollHooked) return;
+    window.__imtScrollHooked = true;
+    var handler = function () {
+      if (!running) return;
+      clearTimeout(loadTimer);
+      loadTimer = setTimeout(function () {
+        if (!running) return;
+        var more = collect();
+        if (more.length) {
+          stats.total += more.length;
+          report();
+          more.forEach(enqueue);
+        }
+      }, 320);
+    };
+    window.addEventListener('scroll', handler, { passive: true });
+    document.addEventListener('scroll', handler, { passive: true, capture: true });
+  }
+
   /* -------------------- الواجهة البرمجية -------------------- */
   window.__imtStart = function () {
     readConfig();
@@ -443,11 +536,13 @@
     running = true;
     injectCSS();
     startObserver();
+    tuneFromConfig();
     var found = collect();
     stats.total = found.length;
     stats.done = 0;
     report();
     found.forEach(enqueue);
+    startAutoLoad();
     showBadge('Immersive-Me · ' + CFG.target + ' · ' + (CFG.provider || '') + ' · ' + found.length + ' مقطع');
   };
 

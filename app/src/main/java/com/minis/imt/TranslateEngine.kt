@@ -230,7 +230,7 @@ object TranslateEngine {
             base.endsWith("/v1") -> "$base/chat/completions"
             else -> "$base/v1/chat/completions"
         }
-        val sys = p.systemPrompt.ifBlank { Provider.DEFAULT_PROMPT }
+        val sys = (p.systemPrompt.ifBlank { Provider.DEFAULT_PROMPT }) + dialectHint()
         val body = JSONObject().apply {
             put("model", p.model)
             put("temperature", 0.2)
@@ -262,6 +262,25 @@ object TranslateEngine {
         content = content.replace(Regex("""(?s)Thinking\.\.\..*?\.\.\.done thinking\."""), "")
         content = content.replace(Regex("""(?s)<(think|thinking)>.*?</\1>"""), "")
         return content.trim()
+    }
+
+    /* ==================== اللهجة ==================== */
+
+    /** تعليمة اللهجة — تُضاف دائماً لبرومبت النظام عند الترجمة للعربية */
+    fun dialectHint(): String {
+        if (!Prefs.target.startsWith("ar")) return ""
+        return when (Prefs.dialect) {
+            "sy" -> " IMPORTANT: Write the translation in natural, everyday **Syrian (Levantine) Arabic dialect** — " +
+                    "exactly the way people actually speak in Damascus. Use colloquial words and idioms, " +
+                    "not formal Modern Standard Arabic. Avoid stiff or classical phrasing. " +
+                    "It must sound like a Syrian person talking, not like a news bulletin."
+            "lb" -> " IMPORTANT: Write the translation in natural everyday Lebanese Arabic dialect — colloquial, not Modern Standard Arabic."
+            "eg" -> " IMPORTANT: Write the translation in natural everyday Egyptian Arabic dialect — colloquial, not Modern Standard Arabic."
+            "gulf" -> " IMPORTANT: Write the translation in natural everyday Gulf (Khaleeji) Arabic dialect — colloquial, not Modern Standard Arabic."
+            "iq" -> " IMPORTANT: Write the translation in natural everyday Iraqi Arabic dialect — colloquial, not Modern Standard Arabic."
+            "ma" -> " IMPORTANT: Write the translation in natural everyday Moroccan Darija — colloquial, not Modern Standard Arabic."
+            else -> " Use clear Modern Standard Arabic (فصحى)."
+        }
     }
 
     /* ==================== قائمة الموديلات ==================== */

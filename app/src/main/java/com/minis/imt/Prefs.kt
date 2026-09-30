@@ -123,6 +123,16 @@ object Prefs {
         get() = sp.getBoolean("inpTr", true)
         set(v) = sp.edit().putBoolean("inpTr", v).apply()
 
+    /** ترجمة تدريجية: بس اللي قريب من الشاشة، والباقي مع التمرير */
+    var lazyTranslate: Boolean
+        get() = sp.getBoolean("lazy", true)
+        set(v) = sp.edit().putBoolean("lazy", v).apply()
+
+    /** لهجة الترجمة العربية — الافتراضي سورية */
+    var dialect: String
+        get() = sp.getString("dialect", "sy")!!
+        set(v) = sp.edit().putString("dialect", v).apply()
+
     // ---------- سجل الصفحات ----------
     var history: MutableList<Pair<String, String>>
         get() {

@@ -241,13 +241,18 @@ class MainActivity : AppCompatActivity() {
         homeRoot.addView(sectionLabel("وصول سريع"))
         homeRoot.addView(tileRow(listOf(
             Triple("\uD83C\uDFAC", "يوتيوب", "https://m.youtube.com"),
-            Triple("\uD83D\uDCF0", "BBC", "https://www.bbc.com/news"),
-            Triple("\uD83D\uDD34", "Reddit", "https://www.reddit.com")
+            Triple("\uD83D\uDD0D", "جوجل", "https://www.google.com"),
+            Triple("\uD83D\uDCDA", "ويكيبيديا", "https://en.wikipedia.org")
         )))
         homeRoot.addView(tileRow(listOf(
-            Triple("\uD835\uDD4F", "Twitter", "https://twitter.com"),
-            Triple("\uD83D\uDCDA", "Wikipedia", "https://en.wikipedia.org"),
-            Triple("\uD83D\uDC19", "GitHub", "https://github.com")
+            Triple("\uD83D\uDCF0", "BBC", "https://www.bbc.com/news"),
+            Triple("\uD83D\uDD34", "Reddit", "https://www.reddit.com"),
+            Triple("\uD835\uDD4F", "Twitter", "https://twitter.com")
+        )))
+        homeRoot.addView(tileRow(listOf(
+            Triple("\uD83D\uDC19", "GitHub", "https://github.com"),
+            Triple("\uD83D\uDFE0", "Hacker News", "https://news.ycombinator.com"),
+            Triple("\uD83D\uDCA1", "Stack Overflow", "https://stackoverflow.com")
         )))
 
         homeRoot.addView(sectionLabel("آخر الصفحات · تُترجم تلقائياً"))
@@ -676,6 +681,10 @@ class MainActivity : AppCompatActivity() {
             o.put("provider", Prefs.effectiveName())
             o.put("selection", Prefs.selectionTranslate)
             o.put("input", Prefs.inputTranslate)
+            o.put("lazy", Prefs.lazyTranslate)
+            val ai = Prefs.effectiveProvider() != null
+            o.put("batch", if (ai) 10 else 6)      // الذكاء الاصطناعي يتحمّل دفعات أكبر
+            o.put("conc", if (ai) 3 else 2)
             return o.toString()
         }
 

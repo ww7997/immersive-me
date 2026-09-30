@@ -191,6 +191,30 @@ class SettingsActivity : AppCompatActivity() {
             }
             addView(modeGroup)
 
+            addView(label("لهجة الترجمة العربية — تعمل مع محرّكات الذكاء الاصطناعي"))
+            val dGroup = ChipGroup(this@SettingsActivity).apply { isSingleSelection = true }
+            listOf("sy" to "سورية", "lb" to "لبنانية", "eg" to "مصرية",
+                   "gulf" to "خليجية", "iq" to "عراقية", "ma" to "مغربية",
+                   "fusha" to "فصحى").forEach { (code, lbl) ->
+                dGroup.addView(Chip(this@SettingsActivity).apply {
+                    text = lbl
+                    textSize = 13f
+                    isCheckable = true
+                    isChecked = Prefs.dialect == code
+                    setOnClickListener { Prefs.dialect = code }
+                })
+            }
+            addView(dGroup)
+
+            addView(MaterialSwitch(this@SettingsActivity).apply {
+                text = "ترجمة تدريجية — الأسرع (يترجم اللي قدامك، والباقي مع التمرير)"
+                textSize = 13f
+                setTextColor(Color.parseColor(C_TEXT))
+                isChecked = Prefs.lazyTranslate
+                setPadding(0, dp(14), 0, 0)
+                setOnCheckedChangeListener { _, v -> Prefs.lazyTranslate = v }
+            })
+
             addView(MaterialSwitch(this@SettingsActivity).apply {
                 text = "وضع سطح المكتب (User-Agent)"
                 textSize = 14f
