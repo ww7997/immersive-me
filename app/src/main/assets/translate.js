@@ -334,11 +334,15 @@
     pump();
   }
 
+  var firstBatch = true;
+
   function pump() {
     if (!running || inflight >= CONC || !queue.length) return;
 
     var batch = [];
-    while (batch.length < BATCH && queue.length) {
+    // الدفعة الأولى صغيرة → أول ترجمة تظهر بسرعة، وبعدها دفعات أكبر
+    var limit = firstBatch ? Math.min(3, BATCH) : BATCH;
+    while (batch.length < limit && queue.length) {
       var el = queue.shift();
       el.__imtQueued = false;
       if (!el.isConnected || el.__imtDone) continue;
@@ -347,6 +351,7 @@
       batch.push([el, t]);
     }
     if (!batch.length) { if (queue.length) setTimeout(pump, 30); return; }
+    firstBatch = false;
 
     inflight++;
     var texts = batch.map(function (b) { return b[1]; });
@@ -571,6 +576,7 @@
   window.__imtStop = function () {
     running = false;
     queue = [];
+    firstBatch = true;
     resetAll();
     showBadge('أُوقفت الترجمة');
   };

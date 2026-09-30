@@ -215,6 +215,32 @@ class SettingsActivity : AppCompatActivity() {
                 setOnCheckedChangeListener { _, v -> Prefs.lazyTranslate = v }
             })
 
+            addView(label("حجم الدفعة — أصغر = ظهور أسرع، أكبر = إنتاجية أعلى"))
+            val bGroup = ChipGroup(this@SettingsActivity).apply { isSingleSelection = true }
+            listOf(0 to "تلقائي", 3 to "٣ أسرع ظهور", 5 to "٥", 8 to "٨", 12 to "١٢ أعلى إنتاجية").forEach { (v, lbl) ->
+                bGroup.addView(Chip(this@SettingsActivity).apply {
+                    text = lbl
+                    textSize = 12f
+                    isCheckable = true
+                    isChecked = Prefs.batchOverride == v
+                    setOnClickListener { Prefs.batchOverride = v }
+                })
+            }
+            addView(bGroup)
+
+            addView(label("التزامن — كم طلب متوازي"))
+            val cGroup = ChipGroup(this@SettingsActivity).apply { isSingleSelection = true }
+            listOf(0 to "تلقائي", 1 to "١", 2 to "٢", 3 to "٣", 4 to "٤").forEach { (v, lbl) ->
+                cGroup.addView(Chip(this@SettingsActivity).apply {
+                    text = lbl
+                    textSize = 12f
+                    isCheckable = true
+                    isChecked = Prefs.concOverride == v
+                    setOnClickListener { Prefs.concOverride = v }
+                })
+            }
+            addView(cGroup)
+
             addView(MaterialSwitch(this@SettingsActivity).apply {
                 text = "وضع سطح المكتب (User-Agent)"
                 textSize = 14f
@@ -499,7 +525,9 @@ class SettingsActivity : AppCompatActivity() {
             syncActive()
             fillFields()
             dlg?.dismiss()
-            snack("الموديل: $picked — اضغط اختبار للتأكيد")
+            val slow = Regex("(?i)(reasoner|thinking|think|-r1|/r1|o1-|o3-)").containsMatchIn(picked)
+            snack(if (slow) "⚠️ «$picked» موديل تفكير — بطيء جداً بالترجمة. الأسرع: deepseek-chat"
+                  else "الموديل: $picked — اضغط اختبار للتأكيد")
         }
 
         filter.addTextChangedListener(object : android.text.TextWatcher {

@@ -133,6 +133,16 @@ object Prefs {
         get() = sp.getString("dialect", "sy")!!
         set(v) = sp.edit().putString("dialect", v).apply()
 
+    /** 0 = تلقائي · حجم الدفعة اللي بينبعت للموديل */
+    var batchOverride: Int
+        get() = sp.getInt("batchOv", 0)
+        set(v) = sp.edit().putInt("batchOv", v).apply()
+
+    /** 0 = تلقائي · عدد الطلبات المتوازية */
+    var concOverride: Int
+        get() = sp.getInt("concOv", 0)
+        set(v) = sp.edit().putInt("concOv", v).apply()
+
     // ---------- سجل الصفحات ----------
     var history: MutableList<Pair<String, String>>
         get() {

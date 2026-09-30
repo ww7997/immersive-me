@@ -187,6 +187,20 @@ object TranslateEngine {
         return aiCall(p, prompt, T_SINGLE).trim()
     }
 
+    /* ---- ترجمة متوازية (تُستعمل كخطة بديلة بدل التسلسل البطيء) ---- */
+    private val parPool = java.util.concurrent.Executors.newFixedThreadPool(4)
+
+    private fun aiParallel(texts: List<String>, target: String, p: Provider): List<String> {
+        val jobs = texts.map { t ->
+            parPool.submit(java.util.concurrent.Callable {
+                try { aiOne(t, target, p) } catch (e: Exception) { fail(describe(e)) }
+            })
+        }
+        return jobs.map { f ->
+            try { f.get() } catch (e: Exception) { "" }
+        }
+    }
+
     private fun aiBatch(texts: List<String>, target: String, p: Provider): List<String> {
         val n = texts.size
         if (n == 1) return listOf(aiOne(texts[0], target, p))
@@ -204,23 +218,45 @@ object TranslateEngine {
             aiCall(p, prompt.toString(), T_BATCH).trim()
         } catch (e: Exception) {
             lastError = describe(e)
-            return texts.map { t -> try { aiOne(t, target, p) } catch (e2: Exception) { fail(describe(e2)) } }
+            return aiParallel(texts, target, p)      // ← متوازي مو تسلسلي
+        }
+
+        // نظّف أسوار الماركداون
+        var body = out
+        if (body.startsWith("```")) {
+            body = body.replace(Regex("""(?s)^```[a-zA-Z]*\s*"""), "")
+                       .replace(Regex("""(?s)\s*```\s*$"""), "").trim()
         }
 
         val res = arrayOfNulls<String>(n)
-        for (line in out.split("\n")) {
+        val plain = ArrayList<String>()
+        for (line in body.split("\n")) {
             val l = line.trim()
             if (l.isEmpty()) continue
-            val m = Regex("""^\[?(\d+)\]?[.:)]?\s+(.*)$""").find(l)
+            val m = Regex("""^\[?\(?(\d+)\)?\]?[.:)\-—]?\s+(.*)$""").find(l)
             if (m != null) {
                 val ix = m.groupValues[1].toIntOrNull()
-                if (ix != null && ix in 1..n) { res[ix - 1] = m.groupValues[2].trim(); continue }
+                if (ix != null && ix in 1..n && res[ix - 1] == null) {
+                    res[ix - 1] = m.groupValues[2].trim(); continue
+                }
             }
+            plain.add(l)
         }
-        if (res.any { it == null }) {
-            return texts.map { t -> try { aiOne(t, target, p) } catch (e: Exception) { fail(describe(e)) } }
+
+        // كل الأسطر مرقّمة ومطابقة
+        if (res.all { it != null }) {
+            return res.map { (it ?: "").replace(Regex("""^\[?\d+\]?[.:)]?\s+"""), "").trim() }
         }
-        return res.map { (it ?: "").replace(Regex("""^\[?\d+\]?[.:)]?\s+"""), "").trim() }
+        // ما في ترقيم بس العدد مطابق → خدهم بالترتيب
+        if (plain.size == n && res.none { it != null }) return plain
+        // عدد الأسطر = عدد المقاطع (مع بعض الترقيم) → أكمل الناقص بالترتيب
+        if (plain.size + res.count { it != null } == n) {
+            var pi = 0
+            for (i in 0 until n) if (res[i] == null) res[i] = plain[pi++]
+            return res.map { (it ?: "").trim() }
+        }
+        // فشل التحليل → متوازي
+        return aiParallel(texts, target, p)
     }
 
     private fun aiCall(p: Provider, userPrompt: String, timeoutMs: Int): String {

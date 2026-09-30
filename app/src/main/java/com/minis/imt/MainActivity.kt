@@ -66,6 +66,8 @@ class MainActivity : AppCompatActivity() {
     private var lastTab = R.id.tab_browser
     private var homeVisible = false
     private var suppressNav = false
+    private var lastBatchMs = 0L
+    private var lastBatchCount = 0
 
     private val C_BRAND = Color.parseColor("#7BA0FF")
     private val C_OK = Color.parseColor("#46D68C")
@@ -683,8 +685,10 @@ class MainActivity : AppCompatActivity() {
             o.put("input", Prefs.inputTranslate)
             o.put("lazy", Prefs.lazyTranslate)
             val ai = Prefs.effectiveProvider() != null
-            o.put("batch", if (ai) 10 else 6)      // الذكاء الاصطناعي يتحمّل دفعات أكبر
-            o.put("conc", if (ai) 3 else 2)
+            val b = Prefs.batchOverride.takeIf { it > 0 } ?: if (ai) 10 else 6
+            val c = Prefs.concOverride.takeIf { it > 0 } ?: if (ai) 3 else 2
+            o.put("batch", b)
+            o.put("conc", c)
             return o.toString()
         }
 
@@ -707,7 +711,10 @@ class MainActivity : AppCompatActivity() {
                     Log.e("IMT", "translate failed", e)
                     List(texts.size) { "" }
                 }
-                Log.d("IMT", "batch ${texts.size} in ${System.currentTimeMillis() - t0}ms")
+                val ms = System.currentTimeMillis() - t0
+                lastBatchMs = ms
+                lastBatchCount = texts.size
+                Log.d("IMT", "batch ${texts.size} in ${ms}ms")
                 TranslateEngine.lastError?.let { err -> main.post { showEngineError(err) } }
                 reply(id, JSONArray(out).toString())
             }
@@ -716,10 +723,12 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun status(done: Int, total: Int) {
             main.post {
+                val speed = if (lastBatchMs > 0)
+                    "  ·  ${lastBatchCount} مقاطع في ${"%.1f".format(lastBatchMs / 1000.0)}ث" else ""
                 tvStatus.text = when {
                     total == 0 -> "ما لقيت نص قابل للترجمة بهالصفحة"
-                    done >= total -> "✓ ترجمت $done مقطع · الكاش: " + Prefs.cacheSize()
-                    else -> "عم يترجم…  $done/$total  ·  " + Prefs.effectiveName()
+                    done >= total -> "✓ ترجمت $done مقطع · الكاش: " + Prefs.cacheSize() + speed
+                    else -> "عم يترجم…  $done/$total  ·  " + Prefs.effectiveName() + speed
                 }
             }
         }
