@@ -218,6 +218,21 @@ class SettingsActivity : AppCompatActivity() {
             addField(this, "Base URL (متوافق مع OpenAI)", "") { t, e -> baseTil = t; baseEt = e }
             addField(this, "API Key — يُخزَّن على جهازك فقط", "", true) { t, e -> keyTil = t; keyEt = e }
             addField(this, "Model", "") { t, e -> modelTil = t; modelEt = e }
+
+            // زر التحقّق من المفتاح وجلب الموديلات الحقيقية
+            addView(MaterialButton(this@SettingsActivity).apply {
+                text = "🔑 تحقّق من المفتاح واجلب الموديلات"
+                textSize = 13f
+                cornerRadius = dp(12)
+                setBackgroundColor(Color.parseColor(C_BRAND))
+                setTextColor(Color.parseColor("#0B1020"))
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.setMargins(0, dp(12), 0, 0)
+                layoutParams = lp
+                setOnClickListener { fetchModels() }
+            })
             addField(this, "System Prompt (اختياري)", "") { t, e -> promptTil = t; promptEt = e }
 
             nameEt.addTextChangedListener(simpleWatcher())
@@ -404,6 +419,81 @@ class SettingsActivity : AppCompatActivity() {
         com.google.android.material.snackbar.Snackbar
             .make(findViewById(android.R.id.content), msg, com.google.android.material.snackbar.Snackbar.LENGTH_SHORT)
             .show()
+
+    /** يجلب الموديلات من المزوّد — ودليل نجاحها إنو المفتاح شغّال */
+    private fun fetchModels() {
+        syncActive()
+        val p = providers.firstOrNull { it.id == Prefs.activeProviderId }
+        if (p == null) { snack("اختار مزوّد أول — Google المجاني ما بدو موديل"); return }
+        if (p.baseUrl.isBlank()) { snack("عبّي Base URL أول"); return }
+        hintTv.text = "⏳ جاري التحقّق من المفتاح وجلب الموديلات…"
+        Thread {
+            try {
+                val models = TranslateEngine.listModels(p)
+                runOnUiThread {
+                    hintTv.text = "✓ المفتاح شغّال — ${models.size} موديل متاح من «${p.name}»"
+                    snack("✓ المفتاح صحيح — اختر موديل")
+                    showModelPicker(p.name, models)
+                }
+            } catch (e: Exception) {
+                val msg = TranslateEngine.describe(e)
+                runOnUiThread {
+                    hintTv.text = "✗ فشل: $msg"
+                    snack("✗ $msg")
+                }
+            }
+        }.start()
+    }
+
+    private fun showModelPicker(providerName: String, models: List<String>) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(10), dp(18), dp(4))
+        }
+        val filter = TextInputEditText(this).apply {
+            hint = "ابحث…"
+            textSize = 14f
+            setTextColor(Color.parseColor(C_TEXT))
+        }
+        box.addView(TextInputLayout(this).apply {
+            hint = "فلترة الموديلات"
+            boxBackgroundColor = Color.parseColor(C_SURFACE2)
+            setBoxCornerRadii(dp(12).toFloat(), dp(12).toFloat(), dp(12).toFloat(), dp(12).toFloat())
+            addView(filter)
+        })
+
+        val list = android.widget.ListView(this)
+        val data = ArrayList(models)
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, data)
+        list.adapter = adapter
+        list.dividerHeight = dp(1)
+
+        var dlg: androidx.appcompat.app.AlertDialog? = null
+        list.setOnItemClickListener { _, _, pos, _ ->
+            val picked = adapter.getItem(pos) ?: return@setOnItemClickListener
+            modelEt.setText(picked)
+            syncActive()
+            fillFields()
+            dlg?.dismiss()
+            snack("الموديل: $picked — اضغط اختبار للتأكيد")
+        }
+
+        filter.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) { adapter.filter.filter(s?.toString() ?: "") }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+
+        box.addView(list, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(360)
+        ).apply { setMargins(0, dp(10), 0, 0) })
+
+        dlg = MaterialAlertDialogBuilder(this)
+            .setTitle("موديلات $providerName (${models.size})")
+            .setView(box)
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
 
     private fun runTest() {
         syncActive()

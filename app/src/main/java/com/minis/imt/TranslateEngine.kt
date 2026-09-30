@@ -264,6 +264,48 @@ object TranslateEngine {
         return content.trim()
     }
 
+    /* ==================== قائمة الموديلات ==================== */
+
+    /**
+     * يجلب الموديلات المتاحة من المزوّد.
+     * هاي الدالة **بتتحقق من المفتاح بنفس الوقت** — إذا رجعت قائمة، يعني المفتاح شغّال.
+     */
+    fun listModels(p: Provider): List<String> {
+        val base = p.baseUrl.trimEnd('/')
+        if (base.isBlank()) throw RuntimeException("عبّي Base URL أول")
+        val url = when {
+            base.endsWith("/models") -> base
+            base.endsWith("/v1") -> "$base/models"
+            else -> "$base/v1/models"
+        }
+        val headers = HashMap<String, String>()
+        headers["Accept"] = "application/json"
+        if (p.apiKey.isNotBlank()) headers["Authorization"] = "Bearer " + p.apiKey
+
+        val raw = withRetry {
+            val conn = open(url, 30_000)
+            headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
+            try {
+                val code = conn.responseCode
+                val text = read(conn, code)
+                if (code !in 200..299) throw RuntimeException("HTTP $code: " + text.take(200))
+                text
+            } finally { conn.disconnect() }
+        }
+
+        val j = JSONObject(raw)
+        val arr = j.optJSONArray("data") ?: j.optJSONArray("models") ?: JSONArray()
+        val out = ArrayList<String>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            var id = o.optString("id", "")
+            if (id.isBlank()) id = o.optString("name", "")
+            if (id.isNotBlank()) out.add(id)
+        }
+        if (out.isEmpty()) throw RuntimeException("المزوّد ما رجّع أي موديل — تأكد من العنوان")
+        return out.distinct().sorted()
+    }
+
     /* ==================== HTTP ==================== */
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
