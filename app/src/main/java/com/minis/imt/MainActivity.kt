@@ -91,11 +91,9 @@ class MainActivity : AppCompatActivity() {
 
     private var ytFixAt = 0L
 
-    /** يختار وكيل المستخدم المناسب للرابط قبل التحميل */
+    /** يختار وكيل المستخدم — وضع سطح المكتب صار خيار المستخدم فقط */
     private fun applyUaFor(url: String?) {
-        val h = hostOf(url) ?: ""
-        val desktop = Prefs.desktopMode || h.contains("youtube.com") || h.contains("youtu.be")
-        val want = if (desktop) UA_DESKTOP else UA
+        val want = if (Prefs.desktopMode) UA_DESKTOP else UA
         if (web.settings.userAgentString != want) web.settings.userAgentString = want
     }
 
@@ -190,7 +188,7 @@ class MainActivity : AppCompatActivity() {
                 showSoon(
                     "\uD83C\uDFAC", "ترجمات الفيديو الثنائية",
                     "ترجمة ترجمات يوتيوب مباشرة على الفيديو — سطر أصلي وسطر مترجم.\n\nقيد البناء: بده تجريب على مشغّل يوتيوب الحقيقي.",
-                    "افتح يوتيوب الآن", "https://www.youtube.com"
+                    "افتح يوتيوب الآن", "https://m.youtube.com"
                 )
             }
             R.id.tab_files -> {
@@ -264,7 +262,7 @@ class MainActivity : AppCompatActivity() {
 
         homeRoot.addView(sectionLabel("وصول سريع"))
         homeRoot.addView(tileRow(listOf(
-            Triple("\uD83C\uDFAC", "يوتيوب", "https://www.youtube.com"),
+            Triple("\uD83C\uDFAC", "يوتيوب", "https://m.youtube.com"),
             Triple("\uD83D\uDD0D", "جوجل", "https://www.google.com"),
             Triple("\uD83D\uDCDA", "ويكيبيديا", "https://en.wikipedia.org")
         )))
@@ -502,6 +500,20 @@ class MainActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, v -> Prefs.inputTranslate = v }
         })
 
+        title("المتصفح")
+        root.addView(MaterialSwitch(this).apply {
+            text = "وضع سطح المكتب (يفتح المواقع كنسخة الكمبيوتر)"
+            textSize = 14f
+            setTextColor(C_TEXT)
+            isChecked = Prefs.desktopMode
+            setOnCheckedChangeListener { _, v ->
+                Prefs.desktopMode = v
+                applyUaFor(web.url)
+                web.reload()
+                snack(if (v) "وضع سطح المكتب — أُعيد التحميل" else "وضع الموبايل — أُعيد التحميل")
+            }
+        })
+
         title("ترجمات الفيديو (يوتيوب)")
         val subsGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
         listOf(
@@ -646,49 +658,17 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val u = request?.url ?: return false
                 val scheme = u.scheme ?: return false
-                if (scheme == "http" || scheme == "https") {
-                    // يوتيوب: نمنع التحويل لموقع الموبايل — لأنو ما عندو زر ترجمات
-                    val h = u.host ?: ""
-                    if (h == "m.youtube.com" && !Prefs.desktopMode) {
-                        val now = System.currentTimeMillis()
-                        if (now - ytFixAt <= 8000) return true          // حماية من الحلقة
-                        ytFixAt = now
-                        val fixed = u.toString().replace("//m.youtube.com", "//www.youtube.com")
-                        applyUaFor(fixed)
-                        view?.loadUrl(fixed)
-                        return true
-                    }
-                    if (h.contains("youtube.com") && web.settings.userAgentString != UA_DESKTOP && !Prefs.desktopMode) {
-                        web.settings.userAgentString = UA_DESKTOP
-                    }
-                    return false
-                }
+                if (scheme == "http" || scheme == "https") return false
                 return try { startActivity(Intent(Intent.ACTION_VIEW, u)); true } catch (e: Exception) { true }
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                urlBar.setText(url ?: "")
-                val h = hostOf(url)
-
-                // يوتيوب الموبايل ما عندو زر ترجمات — نرجّعو لسطح المكتب مرة وحدة (بحماية من الحلقة)
-                if (h == "m.youtube.com" && !Prefs.desktopMode && url != null) {
-                    val now = System.currentTimeMillis()
-                    if (now - ytFixAt > 8000) {
-                        ytFixAt = now
-                        val fixed = url.replace("//m.youtube.com", "//www.youtube.com")
-                        web.settings.userAgentString = UA_DESKTOP
-                        web.post { web.loadUrl(fixed) }
-                    }
-                    return
-                }
-                if (h != null && h.contains("youtube.com") && !Prefs.desktopMode) {
-                    if (web.settings.userAgentString != UA_DESKTOP) web.settings.userAgentString = UA_DESKTOP
-                }
-                currentHost = h
+                if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
+                currentHost = hostOf(url)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                urlBar.setText(url ?: "")
+                if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
                 currentHost = hostOf(url)
                 if (Prefs.isAutoSite(currentHost)) Prefs.enabled = true
                 injectTranslator()
