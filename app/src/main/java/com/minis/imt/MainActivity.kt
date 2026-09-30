@@ -802,6 +802,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun ytStatus(msg: String) {
+            if (!Prefs.ytDebug) return
+            main.post { tvStatus.text = msg }
+        }
+
+        @JavascriptInterface
         fun fetchCaptions(id: String, url: String) {
             pool.execute {
                 val payload: String = try {

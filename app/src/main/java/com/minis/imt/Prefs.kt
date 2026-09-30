@@ -128,6 +128,11 @@ object Prefs {
         get() = sp.getBoolean("lazy", true)
         set(v) = sp.edit().putBoolean("lazy", v).apply()
 
+    /** تشخيص يوتيوب بشريط الحالة */
+    var ytDebug: Boolean
+        get() = sp.getBoolean("ytDbg", true)
+        set(v) = sp.edit().putBoolean("ytDbg", v).apply()
+
     /** ترجمات الفيديو: false = ترجمة فقط · true = أصلي + ترجمة */
     var subsBilingual: Boolean
         get() = sp.getBoolean("subsBoth", false)

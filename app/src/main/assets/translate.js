@@ -666,18 +666,31 @@
       (document.documentElement || document.body).appendChild(DBG.el);
     }
     var win = document.querySelector('.caption-window');
-    var segs = document.querySelectorAll('.ytp-caption-segment').length;
+    var segs = document.querySelectorAll('.ytp-caption-segment');
+    var segText = segs.length ? (segs[0].textContent || '').slice(0, 30) : '';
     var v = document.querySelector('video');
     var trCount = 0;
     for (var i = 0; i < YT.cues.length; i++) if (YT.cues[i].tr) trCount++;
-    DBG.el.textContent =
+    var line =
       'runner: ' + (YT.loaded ? 'CUES' : (YT.live ? 'LIVE' : 'SEARCH')) + '\n' +
       'cues: ' + YT.cues.length + '  tr: ' + trCount + '\n' +
-      'captionWin: ' + (win ? 'YES' : 'no') + '  segs: ' + segs + '\n' +
+      'captionWin: ' + (win ? 'YES' : 'no') + '  segs: ' + segs.length + '\n' +
       'ccBtn: ' + (document.querySelector('.ytp-subtitles-button') ? 'yes' : 'NO') + '\n' +
       'video: ' + (v ? (Math.round(v.currentTime) + 's ' + (v.paused ? 'PAUSED' : 'play')) : 'none') + '\n' +
       'subs:' + (CFG.subs || '?') + '  hits: ' + YT.hitIdx + '\n' +
       (DBG.msg ? 'msg: ' + DBG.msg : '');
+    DBG.el.textContent = line;
+
+    // نسخة مختصرة لشريط الحالة (تظهر بالتقاط الشاشة عن بُعد)
+    var short = 'YT:' + (YT.loaded ? 'CUES' : (YT.live ? 'LIVE' : 'SRCH')) +
+      ' cues=' + YT.cues.length + ' tr=' + trCount +
+      ' win=' + (win ? 1 : 0) + ' seg=' + segs.length +
+      ' cc=' + (document.querySelector('.ytp-subtitles-button') ? 1 : 0) +
+      ' v=' + (v ? Math.round(v.currentTime) + 's' + (v.paused ? 'P' : '>') : '-');
+    if (short !== DBG.lastShort) {
+      DBG.lastShort = short;
+      try { if (ImtNative && ImtNative.ytStatus) ImtNative.ytStatus(short); } catch (e) {}
+    }
   }
 
   /* ==================== ترجمات يوتيوب الثنائية ==================== */
@@ -744,15 +757,26 @@
     return null;
   }
 
-  /** نضغط زر CC إذا الترجمة مطفيّة */
+  /** نحاول نفعّل ترجمات يوتيوب — بعدة طرق */
   function ytEnableCC() {
     try {
-      var btn = document.querySelector('.ytp-subtitles-button');
-      if (btn && btn.getAttribute('aria-pressed') !== 'true') { btn.click(); return true; }
+      var p = document.getElementById('movie_player');
+      if (p) {
+        try { if (p.isSubtitlesOn && p.isSubtitlesOn()) return true; } catch (e) {}
+        try { if (p.toggleSubtitlesOn) { p.toggleSubtitlesOn(); return true; } } catch (e) {}
+        try { if (p.setOption) { p.setOption('captions', 'track', {}); return true; } } catch (e) {}
+        try { if (p.loadModule) p.loadModule('captions'); } catch (e) {}
+      }
     } catch (e) {}
     try {
-      var p = document.getElementById('movie_player');
-      if (p && p.loadModule) p.loadModule('captions');
+      var btn = document.querySelector(
+        '.ytp-subtitles-button,button[aria-label*="ntertitel"],button[aria-label*="ubtitle"],' +
+        'button[aria-label*="aption"],button[data-tooltip-target-id*="caption"]');
+      if (btn) {
+        if (btn.getAttribute('aria-pressed') === 'true') return true;
+        btn.click();
+        return true;
+      }
     } catch (e) {}
     return false;
   }
