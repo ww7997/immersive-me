@@ -324,10 +324,13 @@ class SettingsActivity : AppCompatActivity() {
 
             addView(label("نماذج جاهزة — اضغط للتعبئة"))
             val presets = listOf(
+                "OpenRouter ⚡ فلاش|https://openrouter.ai/api/v1|google/gemini-2.5-flash-lite",
+                "OpenRouter فلاش قوي|https://openrouter.ai/api/v1|google/gemini-2.5-flash",
+                "OpenRouter Haiku|https://openrouter.ai/api/v1|anthropic/claude-haiku-4.5",
+                "OpenRouter DeepSeek فلاش|https://openrouter.ai/api/v1|deepseek/deepseek-v4-flash",
+                "Groq (سريع جداً)|https://api.groq.com/openai/v1|llama-3.3-70b-versatile",
+                "DeepSeek مباشر|https://api.deepseek.com/v1|deepseek-chat",
                 "OpenAI|https://api.openai.com/v1|gpt-4o-mini",
-                "OpenRouter|https://openrouter.ai/api/v1|google/gemini-flash-1.5",
-                "Groq|https://api.groq.com/openai/v1|llama-3.3-70b-versatile",
-                "DeepSeek|https://api.deepseek.com/v1|deepseek-chat",
                 "Mistral|https://api.mistral.ai/v1|mistral-large-latest",
                 "Together|https://api.together.xyz/v1|meta-llama/Llama-3.3-70B-Instruct-Turbo",
                 "llama.cpp محلي|http://127.0.0.1:8080/v1|qwen3-4b-local",
@@ -512,22 +515,35 @@ class SettingsActivity : AppCompatActivity() {
             addView(filter)
         })
 
-        val list = android.widget.ListView(this)
-        val data = ArrayList(models)
+        // ⚡ = سريع جداً · 🐢 = بطيء · 🐌 = تفكير (الأبطأ)
+        val FAST = Regex("(?i)(flash|mini|turbo|haiku|instant|small|lite|nano|8b|9b|scout)")
+        val SLOW = Regex("(?i)(reason|thinking|think|-r1|/r1|o1-|o3-|opus|405b|235b|110b)")
+        fun mark(m: String) = when {
+            FAST.containsMatchIn(m) -> "⚡ "
+            SLOW.containsMatchIn(m) -> "🐢 "
+            else -> "   "
+        }
+        val data = ArrayList(models.map { mark(it) + it })
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, data)
         list.adapter = adapter
         list.dividerHeight = dp(1)
 
         var dlg: androidx.appcompat.app.AlertDialog? = null
         list.setOnItemClickListener { _, _, pos, _ ->
-            val picked = adapter.getItem(pos) ?: return@setOnItemClickListener
+            val shown = adapter.getItem(pos) ?: return@setOnItemClickListener
+            val picked = shown.substring(2)      // نشيل علامة السرعة
             modelEt.setText(picked)
             syncActive()
             fillFields()
             dlg?.dismiss()
-            val slow = Regex("(?i)(reasoner|thinking|think|-r1|/r1|o1-|o3-)").containsMatchIn(picked)
-            snack(if (slow) "⚠️ «$picked» موديل تفكير — بطيء جداً بالترجمة. الأسرع: deepseek-chat"
-                  else "الموديل: $picked — اضغط اختبار للتأكيد")
+            snack(
+                when {
+                    shown.startsWith("⚡") -> "⚡ «$picked» موديل سريع — اختيار ممتاز"
+                    shown.startsWith("🐢") ->
+                        "🐢 «$picked» بطيء بالترجمة — جرّب موديل فيه flash أو mini أو turbo"
+                    else -> "الموديل: $picked — اضغط اختبار للتأكيد"
+                }
+            )
         }
 
         filter.addTextChangedListener(object : android.text.TextWatcher {
@@ -542,6 +558,7 @@ class SettingsActivity : AppCompatActivity() {
 
         dlg = MaterialAlertDialogBuilder(this)
             .setTitle("موديلات $providerName (${models.size})")
+            .setMessage("⚡ أسرع · 🐢 أبطأ — للترجمة بدك ⚡")
             .setView(box)
             .setNegativeButton("إلغاء", null)
             .show()

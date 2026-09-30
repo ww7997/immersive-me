@@ -181,7 +181,11 @@
     try {
       var r = el.getBoundingClientRect();
       var vh = window.innerHeight || 800;
-      return r.bottom > -900 && r.top < vh + 900;
+      var vw = window.innerWidth || 400;
+      // عمودياً: هامش ٨٠٠ بكسل · أفقياً: نتجاهل اللي برّا الشاشة (كاروسيلات)
+      if (r.bottom < -800 || r.top > vh + 800) return false;
+      if (r.right < -250 || r.left > vw + 250) return false;
+      return true;
     } catch (e) { return true; }
   }
 

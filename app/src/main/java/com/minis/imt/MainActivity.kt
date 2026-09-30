@@ -712,8 +712,9 @@ class MainActivity : AppCompatActivity() {
             o.put("input", Prefs.inputTranslate)
             o.put("lazy", Prefs.lazyTranslate)
             val ai = Prefs.effectiveProvider() != null
-            val b = Prefs.batchOverride.takeIf { it > 0 } ?: if (ai) 10 else 6
-            val c = Prefs.concOverride.takeIf { it > 0 } ?: if (ai) 3 else 2
+            // دفعات أصغر + تزامن أعلى = نتائج تظهر أسرع بكثير مع موديلات الـ AI
+            val b = Prefs.batchOverride.takeIf { it > 0 } ?: 6
+            val c = Prefs.concOverride.takeIf { it > 0 } ?: if (ai) 4 else 2
             o.put("batch", b)
             o.put("conc", c)
             return o.toString()
