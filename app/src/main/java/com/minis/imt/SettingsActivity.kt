@@ -26,6 +26,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var root: LinearLayout
     private lateinit var statusTv: TextView
     private lateinit var providerBtn: MaterialButton
+    private lateinit var hintTv: TextView
 
     private lateinit var nameEt: TextInputEditText
     private lateinit var baseEt: TextInputEditText
@@ -206,6 +207,12 @@ class SettingsActivity : AppCompatActivity() {
             providerBtn = btn("—")
             providerBtn.setOnClickListener { chooseProvider() }
             addView(providerBtn)
+            hintTv = TextView(this@SettingsActivity).apply {
+                setTextColor(Color.parseColor(C_MUTED))
+                textSize = 12f
+                setPadding(dp(4), dp(10), 0, 0)
+            }
+            addView(hintTv)
 
             addField(this, "الاسم", "") { t, e -> nameTil = t; nameEt = e }
             addField(this, "Base URL (متوافق مع OpenAI)", "") { t, e -> baseTil = t; baseEt = e }
@@ -351,7 +358,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun fillFields() {
         suppress = true
         providerBtn.text = Prefs.providerName()
-        val p = Prefs.activeProvider()
+        val p = providers.firstOrNull { it.id == Prefs.activeProviderId }
         if (p == null) {
             nameEt.setText(Provider.google.name)
             baseEt.setText("—"); keyEt.setText("—"); modelEt.setText("—"); promptEt.setText("")
@@ -364,17 +371,26 @@ class SettingsActivity : AppCompatActivity() {
             modelEt.setText(p.model)
             promptEt.setText(p.systemPrompt)
         }
+        hintTv.text = if (p == null)
+            "✓ جاهز — محرّك مجاني بلا مفتاح"
+        else if (Prefs.effectiveProvider() != null)
+            "✓ جاهز — الترجمة رح تستعمل «${p.name}»"
+        else
+            "⚠️ ناقص: ${if (p.apiKey.isBlank()) "API Key" else ""}${if (p.baseUrl.isBlank()) " Base URL" else ""}${if (p.model.isBlank()) " Model" else ""} — الترجمة رح تستعمل Google المجاني"
         suppress = false
     }
 
     private fun syncActive() {
         if (suppress) return
-        val p = Prefs.activeProvider() ?: return
-        p.name = nameEt.text?.toString() ?: ""
-        p.baseUrl = baseEt.text?.toString()?.trim() ?: ""
-        p.apiKey = keyEt.text?.toString()?.trim() ?: ""
-        p.model = modelEt.text?.toString()?.trim() ?: ""
-        p.systemPrompt = promptEt.text?.toString() ?: ""
+        val idx = providers.indexOfFirst { it.id == Prefs.activeProviderId }
+        if (idx < 0) return
+        if (!::nameEt.isInitialized) return
+        val p = providers[idx]                       // ← المزوّد الحقيقي بالقائمة المحلية
+        p.name = nameEt.text?.toString()?.trim().orEmpty()
+        p.baseUrl = baseEt.text?.toString()?.trim().orEmpty()
+        p.apiKey = keyEt.text?.toString()?.trim().orEmpty()
+        p.model = modelEt.text?.toString()?.trim().orEmpty()
+        p.systemPrompt = promptEt.text?.toString().orEmpty()
         Prefs.providers = providers
     }
 

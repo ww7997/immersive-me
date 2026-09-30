@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var urlBar: EditText
     private lateinit var progress: ProgressBar
     private lateinit var btnGo: MaterialButton
-    private lateinit var btnTr: MaterialButton
+    private lateinit var fabTr: com.google.android.material.floatingactionbutton.FloatingActionButton
     private lateinit var btnMenu: MaterialButton
     private lateinit var tvStatus: TextView
     private lateinit var tvChip: TextView
@@ -93,7 +93,7 @@ class MainActivity : AppCompatActivity() {
         urlBar = findViewById(R.id.urlBar)
         progress = findViewById(R.id.progress)
         btnGo = findViewById(R.id.btnGo)
-        btnTr = findViewById(R.id.btnTr)
+        fabTr = findViewById(R.id.fabTr)
         btnMenu = findViewById(R.id.btnMenu)
         tvStatus = findViewById(R.id.tvStatus)
         tvChip = findViewById(R.id.tvChip)
@@ -232,7 +232,7 @@ class MainActivity : AppCompatActivity() {
             setTypeface(typeface, Typeface.BOLD)
         })
         homeRoot.addView(TextView(this).apply {
-            text = "Immersive-Me · " + Prefs.providerName()
+            text = "Immersive-Me · " + Prefs.effectiveName()
             setTextColor(C_MUTED)
             textSize = 12f
             setPadding(0, dp(2), 0, dp(18))
@@ -265,7 +265,7 @@ class MainActivity : AppCompatActivity() {
 
         homeRoot.addView(sectionLabel("المحرّك الحالي"))
         homeRoot.addView(TextView(this).apply {
-            text = Prefs.providerName()
+            text = Prefs.effectiveName()
             setTextColor(C_BRAND)
             textSize = 14f
             setPadding(dp(4), 0, 0, 0)
@@ -375,13 +375,13 @@ class MainActivity : AppCompatActivity() {
             } else false
         }
 
-        btnTr.setOnClickListener {
+        fabTr.setOnClickListener {
             Prefs.enabled = !Prefs.enabled
             if (Prefs.enabled) startTranslation() else stopTranslation()
             paintAll()
         }
 
-        btnTr.setOnLongClickListener {
+        fabTr.setOnLongClickListener {
             val on = Prefs.toggleAutoSite(currentHost)
             Prefs.enabled = on
             if (on) startTranslation() else stopTranslation()
@@ -396,7 +396,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun paintAll() {
-        btnTr.iconTint = ColorStateList.valueOf(if (Prefs.enabled) C_OK else C_MUTED)
+        fabTr.imageTintList = ColorStateList.valueOf(if (Prefs.enabled) C_OK else C_MUTED)
         tvChip.text = Prefs.target.uppercase()
         if (!Prefs.enabled) {
             tvStatus.text = if (Prefs.isAutoSite(currentHost))
@@ -475,7 +475,7 @@ class MainActivity : AppCompatActivity() {
 
         title("محرّك الترجمة")
         root.addView(TextView(this).apply {
-            text = Prefs.providerName(); setTextColor(C_BRAND); textSize = 14f
+            text = Prefs.effectiveName(); setTextColor(C_BRAND); textSize = 14f
         })
         root.addView(MaterialButton(this).apply {
             text = "إدارة المفاتيح والمحرّكات"; textSize = 13f
@@ -599,7 +599,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startTranslation() {
         web.evaluateJavascript("window.__imtStart && window.__imtStart();", null)
-        tvStatus.text = "عم يترجم…  ·  " + Prefs.providerName()
+        tvStatus.text = "عم يترجم…  ·  " + Prefs.effectiveName()
     }
 
     private fun stopTranslation() {
@@ -649,7 +649,7 @@ class MainActivity : AppCompatActivity() {
             o.put("target", Prefs.target)
             o.put("mode", Prefs.mode)
             o.put("enabled", Prefs.enabled)
-            o.put("provider", Prefs.providerName())
+            o.put("provider", Prefs.effectiveName())
             o.put("selection", Prefs.selectionTranslate)
             o.put("input", Prefs.inputTranslate)
             return o.toString()
@@ -685,7 +685,7 @@ class MainActivity : AppCompatActivity() {
                 tvStatus.text = when {
                     total == 0 -> "ما لقيت نص قابل للترجمة بهالصفحة"
                     done >= total -> "✓ ترجمت $done مقطع · الكاش: " + Prefs.cacheSize()
-                    else -> "عم يترجم…  $done/$total  ·  " + Prefs.providerName()
+                    else -> "عم يترجم…  $done/$total  ·  " + Prefs.effectiveName()
                 }
             }
         }

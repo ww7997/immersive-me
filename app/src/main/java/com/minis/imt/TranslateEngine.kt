@@ -31,7 +31,7 @@ object TranslateEngine {
 
     fun translate(texts: List<String>, target: String): List<String> {
         if (texts.isEmpty()) return emptyList()
-        val provider = Prefs.activeProvider()
+        val provider = Prefs.effectiveProvider()   // ناقص مفتاح؟ → Google المجاني
         val tag = provider?.id ?: "google"
 
         val out = arrayOfNulls<String>(texts.size)
@@ -205,7 +205,6 @@ object TranslateEngine {
             conn.readTimeout = timeoutMs
             conn.instanceFollowRedirects = true
             headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
-            conn.setRequestProperty("Content-Length", body.size.toString())
             conn.outputStream.use { os: OutputStream -> os.write(body) }
 
             val code = conn.responseCode

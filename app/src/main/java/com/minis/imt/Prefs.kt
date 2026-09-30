@@ -175,8 +175,25 @@ object Prefs {
         return providers.firstOrNull { it.id == activeProviderId }
     }
 
-    fun providerName(): String =
-        activeProvider()?.name ?: "Google (مجاني)"
+    /** المزوّد **القابل للاستعمال** فعلاً. إذا كان ناقص مفتاح → نرجع لـ Google */
+    fun effectiveProvider(): Provider? {
+        val p = activeProvider() ?: return null
+        if (p.baseUrl.isBlank() || p.model.isBlank()) return null
+        val local = p.baseUrl.contains("127.0.0.1") || p.baseUrl.contains("localhost") ||
+                    p.baseUrl.contains("192.168.") || p.baseUrl.contains("10.0.2.2")
+        if (!local && p.apiKey.isBlank()) return null
+        return p
+    }
+
+    fun providerName(): String = activeProvider()?.name ?: "Google (مجاني)"
+
+    /** اسم المحرّك المستخدَم فعلاً — مع تنبيه إذا المزوّد ناقص */
+    fun effectiveName(): String {
+        if (effectiveProvider() != null) return effectiveProvider()!!.name
+        val a = activeProvider()
+        return if (a == null) "Google (مجاني)"
+        else "Google (مجاني) ← «${a.name}» بلا مفتاح"
+    }
 
     // ---------- الكاش ----------
     private fun loadCache() {

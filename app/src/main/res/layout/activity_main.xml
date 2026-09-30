@@ -74,20 +74,6 @@
                     app:iconTint="@color/muted" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnTr"
-                    style="@style/Widget.Material3.Button.TextButton"
-                    android:layout_width="46dp"
-                    android:layout_height="44dp"
-                    android:minWidth="0dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    app:icon="@drawable/ic_translate"
-                    app:iconSize="22dp"
-                    app:iconPadding="0dp"
-                    app:iconGravity="textStart"
-                    app:iconTint="@color/muted" />
-
-                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnMenu"
                     style="@style/Widget.Material3.Button.TextButton"
                     android:layout_width="44dp"
@@ -147,11 +133,29 @@
                 android:progressTint="@color/brand"
                 android:visibility="invisible" />
 
-            <WebView
-                android:id="@+id/web"
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="1" />
+                android:layout_weight="1">
+
+                <WebView
+                    android:id="@+id/web"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/fabTr"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|end"
+                    android:layout_margin="18dp"
+                    android:alpha="0.88"
+                    app:backgroundTint="@color/surface2"
+                    app:elevation="8dp"
+                    app:fabSize="normal"
+                    app:srcCompat="@drawable/ic_translate"
+                    app:tint="@color/muted" />
+            </FrameLayout>
         </LinearLayout>
 
         <!-- ===================== الشاشة الرئيسية ===================== -->
