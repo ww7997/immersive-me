@@ -93,10 +93,12 @@ class MainActivity : AppCompatActivity() {
     private var destroyed = false
     private var netRetries = 0
 
-    /** يختار وكيل المستخدم — وضع سطح المكتب صار خيار المستخدم فقط */
-    private fun applyUaFor(url: String?) {
-        val want = if (Prefs.desktopMode) UA_DESKTOP else UA
-        if (web.settings.userAgentString != want) web.settings.userAgentString = want
+    /** نغيّر وكيل المستخدم فقط عند تفعيل وضع سطح المكتب — وإلا نرجع الافتراضي */
+    private fun applyUaFor(@Suppress("UNUSED_PARAMETER") url: String?) {
+        val want: String? = if (Prefs.desktopMode) UA_DESKTOP else null
+        try {
+            if (web.settings.userAgentString != want) web.settings.userAgentString = want
+        } catch (e: Exception) {}
     }
 
     private val LANGS = listOf(
@@ -186,25 +188,11 @@ class MainActivity : AppCompatActivity() {
                 browserScreen.visibility = View.VISIBLE
                 paintAll()
             }
-            R.id.tab_video -> {
-                showSoon(
-                    "\uD83C\uDFAC", "ترجمات الفيديو الثنائية",
-                    "ترجمة ترجمات يوتيوب مباشرة على الفيديو — سطر أصلي وسطر مترجم.\n\nقيد البناء: بده تجريب على مشغّل يوتيوب الحقيقي.",
-                    "افتح يوتيوب الآن", "https://m.youtube.com"
-                )
-            }
             R.id.tab_files -> {
                 showSoon(
-                    "\uD83D\uDCC4", "ترجمة PDF ثنائية",
+                    "\uD83D\uDCC4", "ترجمة PDF",
                     "افتح أي PDF واقرأه بالعربية والإنجليزية معاً.\n\nقيد البناء: نستعمل pdf.js حتى تعمل نفس محرّك الترجمة.",
                     "افتح ملف PDF", null
-                )
-            }
-            R.id.tab_books -> {
-                showSoon(
-                    "\uD83D\uDCD6", "قارئ الكتب (EPUB)",
-                    "كتاب كامل بالإنجليزي والعربي جنب بعض، فصل ورا فصل.\n\nقيد البناء.",
-                    "افتح كتاب EPUB", null
                 )
             }
         }
@@ -640,19 +628,47 @@ class MainActivity : AppCompatActivity() {
         s.setSupportZoom(true)
         s.builtInZoomControls = true
         s.displayZoomControls = false
-        s.javaScriptCanOpenWindowsAutomatically = false
-        s.setSupportMultipleWindows(false)
+        s.javaScriptCanOpenWindowsAutomatically = true
+        s.setSupportMultipleWindows(true)          // يوتيوب وبعض المواقع بتحتاجها
         s.mediaPlaybackRequiresUserGesture = false
         s.cacheMode = WebSettings.LOAD_DEFAULT
-        s.userAgentString = if (Prefs.desktopMode) UA.replace(" Mobile", "") else UA
+        // وكيل المستخدم: نتركه افتراضياً من أندرويد — أضمن توافقاً مع كل المواقع
+        // (الوكيل المزيّف كان يسبب ERR_NETWORK_CHANGED على يوتيوب)
+        s.userAgentString = if (Prefs.desktopMode) UA_DESKTOP else null
 
         WebView.setWebContentsDebuggingEnabled(true)
+
+        // كوكيز صريحة — بعض المواقع (يوتيوب) ما بتشتغل بدونها
+        try {
+            val cm = CookieManager.getInstance()
+            cm.setAcceptCookie(true)
+            cm.setAcceptThirdPartyCookies(web, true)
+        } catch (e: Exception) {}
+
         web.addJavascriptInterface(Bridge(), "ImtNative")
 
         web.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 progress.progress = newProgress
                 progress.visibility = if (newProgress in 1..99) View.VISIBLE else View.INVISIBLE
+            }
+            /** نافذة جديدة (window.open) → نفتحها بنفس المتصفح بدل ما تفشل */
+            override fun onCreateWindow(
+                view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?
+            ): Boolean {
+                try {
+                    val transport = resultMsg?.obj as? WebView.WebViewTransport
+                    val tmp = WebView(this@MainActivity)
+                    tmp.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
+                            req?.url?.let { web.loadUrl(it.toString()) }
+                            return true
+                        }
+                    }
+                    transport?.webView = tmp
+                    (resultMsg?.target as? Handler)?.sendMessage(resultMsg)
+                    return true
+                } catch (e: Exception) { return false }
             }
         }
 
