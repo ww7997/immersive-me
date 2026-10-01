@@ -138,8 +138,13 @@ object Prefs {
 
     /** تشخيص يوتيوب بشريط الحالة */
     var ytDebug: Boolean
-        get() = sp.getBoolean("ytDbg", true)
+        get() = sp.getBoolean("ytDbg", false)
         set(v) = sp.edit().putBoolean("ytDbg", v).apply()
+
+    /** اعتراض ملفات الترجمات من الشبكة (المعمارية الجديدة) */
+    var captureSubs: Boolean
+        get() = sp.getBoolean("capSubs", true)
+        set(v) = sp.edit().putBoolean("capSubs", v).apply()
 
     /** ترجمات الفيديو: false = ترجمة فقط · true = أصلي + ترجمة */
     var subsBilingual: Boolean

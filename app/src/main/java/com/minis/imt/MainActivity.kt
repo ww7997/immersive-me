@@ -520,7 +520,26 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        title("ترجمات الفيديو (يوتيوب)")
+        title("ترجمات الفيديو")
+        root.addView(MaterialSwitch(this).apply {
+            text = "اعتراض ترجمات الفيديو من الشبكة"
+            textSize = 14f
+            setTextColor(C_TEXT)
+            isChecked = Prefs.captureSubs
+            setOnCheckedChangeListener { _, v ->
+                Prefs.captureSubs = v
+                snack(if (v) "اعتراض الترجمات مفعّل" else "أُوقف اعتراض الترجمات")
+            }
+        })
+        root.addView(MaterialSwitch(this).apply {
+            text = "أصلي + ترجمة (بدل الترجمة فقط)"
+            textSize = 14f
+            setTextColor(C_TEXT)
+            isChecked = Prefs.subsBilingual
+            setOnCheckedChangeListener { _, v -> Prefs.subsBilingual = v }
+        })
+
+        title("ترجمات الصفحات — وضع العرض")
         val subsGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
         listOf(
             false to "ترجمة فقط",
@@ -700,6 +719,26 @@ class MainActivity : AppCompatActivity() {
                 pageReady = false
                 if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
                 currentHost = hostOf(url)
+                subsSeen.clear()                    // صفحة جديدة → نسمح باعتراض جديد
+            }
+
+            /**
+             * اعتراض الشبكة — أهم جزء بالمعمارية الجديدة.
+             * نلتقط طلب ملف الترجمات الأصلي (يوتيوب/نتفليكس/أي مشغّل)،
+             * نحمّل نسخة منه، ونترك الطلب الأصلي يمشي طبيعياً بلا تدخّل.
+             */
+            override fun shouldInterceptRequest(
+                view: WebView?, request: WebResourceRequest?
+            ): WebResourceResponse? {
+                try {
+                    val u = request?.url?.toString() ?: return null
+                    if (!Prefs.captureSubs) return null
+                    if (!Subs.looksLikeSubtitleUrl(u)) return null
+                    if (!subsSeen.add(u)) return null          // مرة وحدة لكل رابط
+                    val method = request.method ?: "GET"
+                    pool.execute { grabSubs(u, method) }
+                } catch (e: Exception) {}
+                return null                                    // الطلب يمشي طبيعياً
             }
 
             /** إعادة محاولة تلقائية عند أخطاء الشبكة العابرة — مع تصفير الكاش عند اللزوم */
@@ -749,6 +788,62 @@ class MainActivity : AppCompatActivity() {
                     if (homeScreen.visibility == View.VISIBLE) buildHome()
                 }, 600)
             }
+        }
+    }
+
+    private val subsSeen = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /**
+     * يحمل نسخة من ملف الترجمات، يفكّها، يبعتها للواجهة فوراً بالتوقيت الأصلي،
+     * ثم يترجمها على دفعات ويحدّث كل دفعة لحظة وصولها.
+     */
+    private fun grabSubs(url: String, method: String) {
+        if (destroyed) return
+        val cookies = try { CookieManager.getInstance().getCookie(url) } catch (e: Exception) { null }
+        val body = Subs.fetch(url, cookies, method) ?: return
+        val cues = Subs.parse(body)
+        if (cues.size < 2) return
+        Log.d("IMT", "subs captured: ${cues.size} cues from $url")
+
+        // ١) نبعتها فوراً بالتوقيت الأصلي (بلا ترجمة) — مزامنة مثالية من اللحظة الأولى
+        val firstJson = Subs.toJson(cues, emptyList())
+        main.post {
+            if (destroyed) return@post
+            try {
+                web.evaluateJavascript(
+                    "window.__imtSubs && window.__imtSubs(" + JSONObject.quote(firstJson) + ")", null)
+                tvStatus.text = "ترجمات الفيديو: ${cues.size} سطر · عم يترجم…"
+            } catch (e: Exception) {}
+        }
+
+        // ٢) نترجم على دفعات صغيرة ونحدّث تدريجياً
+        val CH = 8
+        var i = 0
+        while (i < cues.size && !destroyed) {
+            val slice = cues.subList(i, minOf(i + CH, cues.size))
+            val tr = try {
+                TranslateEngine.translate(slice.map { it.text }, Prefs.target)
+            } catch (e: Exception) { emptyList() }
+            if (tr.isNotEmpty()) {
+                val arr = JSONArray()
+                tr.forEach { arr.put(it) }
+                val idx = i
+                val done = minOf(i + CH, cues.size)
+                val total = cues.size
+                main.post {
+                    if (destroyed) return@post
+                    try {
+                        web.evaluateJavascript(
+                            "window.__imtSubsTr && window.__imtSubsTr($idx," +
+                            JSONObject.quote(arr.toString()) + ")", null)
+                        tvStatus.text = "ترجمات الفيديو: $done/$total"
+                    } catch (e: Exception) {}
+                }
+            }
+            i += CH
+        }
+        main.post {
+            if (!destroyed) tvStatus.text = "✓ ترجمات الفيديو جاهزة (${cues.size} سطر)"
         }
     }
 

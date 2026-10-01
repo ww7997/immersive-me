@@ -49,8 +49,8 @@
     '.imt-inp .t{font-size:.94em;line-height:1.6;direction:rtl;text-align:right;color:inherit;',
     '  opacity:.95;border-inline-start:3px solid rgba(110,150,255,.6);padding-inline-start:9px;}',
     /* ---- ترجمات الفيديو (يوتيوب) ---- */
-    '.imt-subs{position:absolute;left:5%;right:5%;bottom:7%;z-index:2147483645;text-align:center;',
-    '  pointer-events:none;display:none;}',
+    '.imt-subs{position:fixed;z-index:2147483645;text-align:center;pointer-events:none;display:none;',
+    '  overflow:hidden;}',
     '.imt-subs .s1{font-size:11px;line-height:1.3;color:#c9d2e0;direction:ltr;opacity:.85;',
     '  text-shadow:0 1px 3px #000,0 0 2px #000;margin-bottom:2px;}',
     '.imt-subs .s2{font-size:16px;line-height:1.4;font-weight:700;color:#fff;',
@@ -58,7 +58,7 @@
     '  text-shadow:0 1px 4px #000;}',
     '.imt-subs.only .s1{display:none;}',
     /* ---- لوحة تشخيص يوتيوب ---- */
-    '.imt-ytdbg{position:fixed;left:8px;top:8px;z-index:2147483647;background:rgba(0,0,0,.82);',
+    
     '  color:#8CF;font:10px/1.5 monospace;padding:7px 9px;border-radius:8px;max-width:62vw;',
     '  white-space:pre-wrap;direction:ltr;text-align:left;pointer-events:none;border:1px solid #345;}'
   ].join('\n');
@@ -597,512 +597,89 @@
     document.addEventListener('scroll', handler, { passive: true, capture: true });
   }
 
-  /** هل النص أصلاً بلغة الهدف؟ — يمنع حلقة لا نهاية (نترجم ترجمتنا) */
-  function looksTarget(s) {
-    if (!s) return false;
-    var t = CFG.target || 'ar';
-    if (t.indexOf('ar') === 0 || t.indexOf('fa') === 0 || t.indexOf('ur') === 0) {
-      return /[\u0600-\u06FF]/.test(s);
-    }
-    if (t.indexOf('zh') === 0) return /[\u4E00-\u9FFF]/.test(s);
-    if (t.indexOf('ru') === 0) return /[\u0400-\u04FF]/.test(s);
-    return false;
-  }
+  /* ==================== ترجمات الفيديو الموحّدة ====================
+   * المعمارية الجديدة: Kotlin يعترض ملف الترجمات الأصلي من الشبكة،
+   * يفكّه، ويبعث المقاطع هنا **بتوقيتاتها الأصلية** — فنعرض بمزامنة مثالية.
+   * نفس الكود يعمل على يوتيوب ونتفليكس وأي مشغّل آخر.
+   * ================================================================= */
+  var SUBS = { cues: [], ov: null, el: null, last: -2, timer: null, host: null };
 
-  /* ===== الطريقة الذكية: نستبدل نص يوتيوب نفسه بدل ما نبني تراكب ===== */
-  var YR = { cache: {}, miss: {}, last: '' };
-
-  function ytReplaceTick() {
-    var win = document.querySelector('.caption-window');
-    if (!win) return;
-
-    var txt = (win.textContent || '').replace(/\s+/g, ' ').trim();
-    if (!txt) return;
-    if (txt === win.__imtOut) return;        // نحنا اللي كتبناها
-    if (txt === win.__imtSrc) return;        // ما تغيّرت من يوتيوب
-    if (looksTarget(txt)) return;            // ← حماية الحلقة: خرجنا نحنا
-
-    win.__imtSrc = txt;
-    var k = ytNorm(txt);
-    if (!k) return;
-
-    var t = YR.cache[k];
-    if (!t && YT.loaded) {
-      var hit = ytLookup(txt);
-      if (hit && hit.tr) t = hit.tr;
-    }
-    if (t) {
-      ytWriteCaption(win, t, txt);
-      return;
-    }
-
-    // ترجمة لحظية (ما لقيناها جاهزة)
-    ytWriteCaption(win, '…', txt);
-    if (YR.miss[k]) return;
-    if (looksTarget(txt)) return;
-    YR.miss[k] = 1;
-    bridgeTranslate([txt]).then(function (r) {
-      var tr = ((r && r[0]) || '').trim();
-      if (!tr) { delete YR.miss[k]; return; }
-      YR.cache[k] = tr;
-      var w = document.querySelector('.caption-window');
-      if (w && w.textContent && ytNorm(w.textContent) === k) ytWriteCaption(w, tr, txt);
-    })['catch'](function () { delete YR.miss[k]; });
-  }
-
-  function ytWriteCaption(win, tr, orig) {
-    win.textContent = '';
-    if (CFG.subs === 'both') {
-      var a = document.createElement('span');
-      a.textContent = orig;
-      a.style.cssText = 'display:block;font-size:.72em;opacity:.8;direction:ltr;';
-      win.appendChild(a);
-    }
-    var b = document.createElement('span');
-    b.textContent = tr;
-    b.style.cssText = 'display:block;font-weight:600;';
-    win.appendChild(b);
-    // في الوضع الثنائي textContent = الأصل + الترجمة، فنحفظ كامل النص لمنع الحلقة
-    win.__imtOut = (CFG.subs === 'both') ? (orig + ' ' + tr) : tr;
-  }
-
-  /* ===== لوحة تشخيص — تخلّي المشكلة تبان بصورة وحدة ===== */
-  var DBG = { el: null, msg: '' };
-
-  function ytDbg(line) { DBG.msg = line; }
-
-  function ytDbgTick() {
-    var on = isYouTube() && (/\/watch|\/shorts/.test(location.pathname));
-    if (!on) { if (DBG.el) { DBG.el.remove(); DBG.el = null; } return; }
-    if (!DBG.el) {
-      DBG.el = document.createElement('div');
-      DBG.el.className = 'imt-ytdbg';
-      DBG.el.setAttribute('data-imt-skip', '1');
-      (document.documentElement || document.body).appendChild(DBG.el);
-    }
-    var win = document.querySelector('.caption-window');
-    var segs = document.querySelectorAll('.ytp-caption-segment');
-    var segText = segs.length ? (segs[0].textContent || '').slice(0, 30) : '';
-    var v = document.querySelector('video');
-    var trCount = 0;
-    for (var i = 0; i < YT.cues.length; i++) if (YT.cues[i].tr) trCount++;
-    var line =
-      'runner: ' + (YT.loaded ? 'CUES' : (YT.live ? 'LIVE' : 'SEARCH')) + '\n' +
-      'cues: ' + YT.cues.length + '  tr: ' + trCount + '\n' +
-      'captionWin: ' + (win ? 'YES' : 'no') + '  segs: ' + segs.length + '\n' +
-      'ccBtn: ' + (document.querySelector('.ytp-subtitles-button') ? 'yes' : 'NO') + '\n' +
-      'video: ' + (v ? (Math.round(v.currentTime) + 's ' + (v.paused ? 'PAUSED' : 'play')) : 'none') + '\n' +
-      'subs:' + (CFG.subs || '?') + '  hits: ' + YT.hitIdx + '\n' +
-      (DBG.msg ? 'msg: ' + DBG.msg : '');
-    DBG.el.textContent = line;
-
-    // نسخة مختصرة لشريط الحالة (تظهر بالتقاط الشاشة عن بُعد)
-    var short = 'YT:' + (YT.loaded ? 'CUES' : (YT.live ? 'LIVE' : 'SRCH')) +
-      ' cues=' + YT.cues.length + ' tr=' + trCount +
-      ' win=' + (win ? 1 : 0) + ' seg=' + segs.length +
-      ' cc=' + (document.querySelector('.ytp-subtitles-button') ? 1 : 0) +
-      ' v=' + (v ? Math.round(v.currentTime) + 's' + (v.paused ? 'P' : '>') : '-');
-    if (short !== DBG.lastShort) {
-      DBG.lastShort = short;
-      try { if (ImtNative && ImtNative.ytStatus) ImtNative.ytStatus(short); } catch (e) {}
-    }
-  }
-
-  /* ==================== ترجمات يوتيوب الثنائية ==================== */
-  /**
-   * ثلاث طرق بالترتيب:
-   *  ١) مسار الترجمات من بيانات المشغّل (Kotlin) — الأسرع إذا سمح يوتيوب
-   *  ٢) نقرأ cues من عنصر الفيديو نفسه (video.textTracks) — الأضمن من جوّا المتصفح
-   *  ٣) وضع مباشر: نقرأ نص الترجمة المعروض ونترجمو لحظياً — خطة أخيرة
-   */
-  var YT = {
-    cues: [], ov: null, el1: null, el2: null, lastIdx: -2, timer: null,
-    loaded: false, loading: false, waiting: {}, seq: 0,
-    live: false, tries: 0, ccClicked: false, liveLast: '', liveCache: {},
-    map: {}, pending: {}, livePending: {}, hitIdx: -1, lastShown: '', lastHref: ''
-  };
-
-  function isYouTube() {
-    var h = location.hostname;
-    return /(^|\.)youtube\.com$/.test(h) || h === 'youtu.be';
-  }
-  function isWatchPage() {
-    return /^\/(watch|shorts|embed|live)/.test(location.pathname) || /[?&]v=/.test(location.search);
-  }
-
-  /** يوتيوب أحياناً بيرجّع رابط نسبي — لازم نكمّلو */
-  function ytAbs(u) {
-    if (!u) return null;
-    u = u.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-    if (u.charAt(0) === '/') return location.origin + u;
-    if (!/^https?:/.test(u)) return null;
-    return u;
-  }
-
-  function ytCaptionUrl() {
-    // ١) من كائن المشغّل
-    try {
-      var pr = window.ytInitialPlayerResponse;
-      var tracks = pr && pr.captions && pr.captions.playerCaptionsTracklistRenderer
-                   && pr.captions.playerCaptionsTracklistRenderer.captionTracks;
-      if (tracks && tracks.length) {
-        var pick = null;
-        for (var i = 0; i < tracks.length; i++) if (tracks[i].kind === 'asr') { pick = tracks[i]; break; }
-        if (!pick) pick = tracks[0];
-        var a = ytAbs(pick && pick.baseUrl);
-        if (a) return a;
-      }
-    } catch (e) {}
-
-    // ٢) من سكربتات الصفحة (مضمّن بالـ HTML، وهاد بيشتغل حتى قبل تشغيل الفيديو)
-    try {
-      var scripts = document.querySelectorAll('script');
-      for (var k = 0; k < scripts.length; k++) {
-        var s = scripts[k].textContent || '';
-        if (s.indexOf('captionTracks') < 0) continue;
-        var m = /"captionTracks"\s*:\s*(\[[\s\S]*?\}\s*\])/.exec(s);
-        if (!m) continue;
-        var arr = JSON.parse(m[1]);
-        for (var j = 0; j < arr.length; j++) {
-          var b = ytAbs(arr[j] && arr[j].baseUrl);
-          if (b) return b;
-        }
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  /** هل ترجمات يوتيوب مفعّلة هلّق؟ */
-  function ytCCIsOn() {
-    try {
-      var p = document.getElementById('movie_player');
-      if (p && p.isSubtitlesOn) return !!p.isSubtitlesOn();
-    } catch (e) {}
-    try {
-      var b = document.querySelector('.ytp-subtitles-button');
-      if (b) return b.getAttribute('aria-pressed') === 'true';
-    } catch (e) {}
-    return false;
-  }
-
-  /** نحاول نفعّل ترجمات يوتيوب — بعدة طرق */
-  function ytEnableCC() {
-    try {
-      var p = document.getElementById('movie_player');
-      if (p) {
-        try { if (p.isSubtitlesOn && p.isSubtitlesOn()) return true; } catch (e) {}
-        try { if (p.toggleSubtitlesOn) { p.toggleSubtitlesOn(); return true; } } catch (e) {}
-        try { if (p.setOption) { p.setOption('captions', 'track', {}); return true; } } catch (e) {}
-        try { if (p.loadModule) p.loadModule('captions'); } catch (e) {}
-      }
-    } catch (e) {}
-    try {
-      var btn = document.querySelector(
-        '.ytp-subtitles-button,button[aria-label*="ntertitel"],button[aria-label*="ubtitle"],' +
-        'button[aria-label*="aption"],button[data-tooltip-target-id*="caption"]');
-      if (btn) {
-        if (btn.getAttribute('aria-pressed') === 'true') return true;
-        btn.click();
-        return true;
-      }
-    } catch (e) {}
-    return false;
-  }
-
-  /** نقرأ كل مقاطع الترجمة من عنصر الفيديو */
-  function ytCuesFromTrack() {
-    var v = document.querySelector('video');
-    if (!v || !v.textTracks || !v.textTracks.length) return null;
-    for (var i = 0; i < v.textTracks.length; i++) {
-      var tt = v.textTracks[i];
-      if (!tt.cues || tt.cues.length < 2) continue;
-      var out = [];
-      for (var k = 0; k < tt.cues.length; k++) {
-        var c = tt.cues[k];
-        var t = String(c.text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (!t) continue;
-        out.push({ s: Math.round(c.startTime * 1000), e: Math.round(c.endTime * 1000), t: t, tr: '' });
-      }
-      if (out.length > 1) return out;
-    }
-    return null;
-  }
-
-  function ytLiveText() {
-    var els = document.querySelectorAll('.ytp-caption-segment');
-    var s = '';
-    for (var i = 0; i < els.length; i++) s += els[i].textContent;
-    return s.replace(/\s+/g, ' ').trim();
-  }
-
-  function ytReset() {
-    YT.cues = []; YT.loaded = false; YT.loading = false; YT.live = false;
-    YT.lastIdx = -2; YT.waiting = {}; YT.tries = 0; YT.ccClicked = false;
-    YT.liveLast = ''; YT.liveCache = {}; YT.map = {}; YT.pending = {};
-    YT.livePending = {}; YT.hitIdx = -1; YT.lastShown = '';
-    document.documentElement.classList.remove('imt-yt');
-    if (YT.ov) { YT.ov.remove(); YT.ov = null; }
-  }
-
-  function ytRequest() {
-    if (YT.loaded || YT.loading) return;
-    var url = ytCaptionUrl();
-    if (!url) return;                       // الطريقة ٢/٣ بتتولّى
-    YT.loading = true;
-    var id = 'c' + (++YT.seq);
-    YT.waiting[id] = true;
-    try { ImtNative.fetchCaptions(id, url); }
-    catch (e) { YT.loading = false; return; }
-    setTimeout(function () {
-      if (YT.waiting[id]) { delete YT.waiting[id]; YT.loading = false; }   // بنكمّل للطريقة ٢
-    }, 20000);
-  }
-
-  window.__imtCaptions = function (id, payload) {
-    if (!YT.waiting[id]) return;
-    delete YT.waiting[id];
-    YT.loading = false;
+  /** تستقبل كل المقاطع فور التقاطها (بلا ترجمة بعد) */
+  window.__imtSubs = function (json) {
     var data;
-    try { data = JSON.parse(payload); } catch (e) { return; }
-    if (!data || data.error || !data.length) return;    // نفشل بصمت ونكمّل للطريقة ٢
-    ytLoadCues(data.slice(0));
+    try { data = JSON.parse(json); } catch (e) { return; }
+    if (!data || !data.length) return;
+    SUBS.cues = data;
+    for (var i = 0; i < SUBS.cues.length; i++) if (!SUBS.cues[i].tr) SUBS.cues[i].tr = '';
+    SUBS.last = -2;
+    subsStart();
+    showBadge('ترجمات الفيديو: ' + SUBS.cues.length + ' سطر');
   };
 
-  function ytLoadCues(list) {
-    YT.cues = list;
-    for (var i = 0; i < YT.cues.length; i++) YT.cues[i].tr = YT.cues[i].tr || '';
-    YT.loaded = true;
-    YT.live = false;
-    document.documentElement.classList.add('imt-yt');
-    showBadge('✓ ' + YT.cues.length + ' سطر مترجم');
-    ytBuildMap();
-    ytTranslateCues();
-  }
-
-  function ytTranslateCues() {
-    var CH = 10;
-    for (var i = 0; i < YT.cues.length; i += CH) {
-      (function (start) {
-        var slice = YT.cues.slice(start, start + CH);
-        bridgeTranslate(slice.map(function (c) { return c.t; }), function (idx, txt) {
-          if (slice[idx] && txt) slice[idx].tr = txt;
-        }).then(function (list) {
-          if (!list) return;
-          for (var k = 0; k < slice.length && k < list.length; k++) {
-            var r = (list[k] || '').trim();
-            if (r) slice[k].tr = r;
-          }
-        })['catch'](function () {});
-      })(i);
+  /** تحديث ترجمة دفعة من المقاطع */
+  window.__imtSubsTr = function (startIdx, json) {
+    var arr;
+    try { arr = JSON.parse(json); } catch (e) { return; }
+    for (var i = 0; i < arr.length; i++) {
+      var c = SUBS.cues[startIdx + i];
+      if (c && arr[i]) c.tr = arr[i];
     }
+  };
+
+  function subsStart() {
+    if (SUBS.timer) return;
+    SUBS.timer = setInterval(subsTick, 120);
   }
 
-  function ytEnsureOverlay() {
+  function subsStop() {
+    if (SUBS.timer) { clearInterval(SUBS.timer); SUBS.timer = null; }
+    if (SUBS.ov) SUBS.ov.style.display = 'none';
+  }
+
+  /** طبقة عرض واحدة تفهم أي مشغّل — نثبّتها فوق الفيديو بالضبط */
+  function subsOverlay() {
+    if (!SUBS.ov) {
+      SUBS.ov = document.createElement('div');
+      SUBS.ov.className = 'imt-subs';
+      SUBS.ov.setAttribute('data-imt-skip', '1');
+      SUBS.el = document.createElement('div');
+      SUBS.el.className = 's2';
+      SUBS.ov.appendChild(SUBS.el);
+      (document.body || document.documentElement).appendChild(SUBS.ov);
+    }
     var v = document.querySelector('video');
-    if (!v) return null;
-    // نحطه داخل حاوية المشغّل — مو بصفحة كاملة
-    var host = document.querySelector('.html5-video-player') || v.parentElement;
-    if (!host) return null;
-    if (YT.ov && YT.ov.isConnected && YT.ov.parentElement === host) return YT.ov;
-    if (YT.ov) { try { YT.ov.remove(); } catch (e) {} }
-    YT.ov = document.createElement('div');
-    YT.ov.className = 'imt-subs' + (CFG.subs === 'both' ? '' : ' only');
-    YT.ov.setAttribute('data-imt-skip', '1');
-    var a = document.createElement('div'); a.className = 's1';
-    var b = document.createElement('div'); b.className = 's2';
-    YT.ov.appendChild(a); YT.ov.appendChild(b);
-    YT.el1 = a; YT.el2 = b;
-    try {
-      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-      host.appendChild(YT.ov);
-    } catch (e) { return null; }
-    return YT.ov;
+    if (!v) return false;
+    var r = v.getBoundingClientRect();
+    if (r.width < 40 || r.height < 30) return false;
+    SUBS.ov.style.position = 'fixed';
+    SUBS.ov.style.left = (r.left + r.width * 0.05) + 'px';
+    SUBS.ov.style.width = (r.width * 0.90) + 'px';
+    SUBS.ov.style.top = (r.top + r.height * 0.76) + 'px';
+    SUBS.ov.style.bottom = 'auto';
+    SUBS.ov.style.maxHeight = (r.height * 0.24) + 'px';
+    return true;
   }
 
-  function ytHide(show) {
-    if (YT.ov) YT.ov.style.display = show ? 'block' : 'none';
-  }
-
-  function ytNorm(s) {
-    return String(s || '').toLowerCase()
-      .replace(/[\u2018\u2019\u201C\u201D]/g, '')
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-      .replace(/\s+/g, ' ').trim();
-  }
-
-  /** يبني خريطة نص → ترجمة بعد ما تخلص الترجمة المسبقة */
-  function ytBuildMap() {
-    YT.map = {};
-    for (var i = 0; i < YT.cues.length; i++) {
-      var n = YT.cues[i].n || (YT.cues[i].n = ytNorm(YT.cues[i].t));
-      if (n && YT.map[n] == null) YT.map[n] = i;
-    }
-  }
-
-  /**
-   * يدوّر ترجمة النص اللي يوتيوب عم يعرضو.
-   * يبحث أول بمحيط آخر موضع (سريع)، وإذا فشل → بحث كامل.
-   */
-  function ytLookup(shown) {
-    var k = ytNorm(shown);
-    if (!k || k.length < 2) return null;
-    var n = YT.cues.length;
-    var around = YT.hitIdx >= 0 ? YT.hitIdx : 0;
-
-    for (var pass = 0; pass < 3; pass++) {
-      var a, b;
-      if (pass === 0) { a = Math.max(0, around - 15); b = Math.min(n, around + 45); }
-      else if (pass === 1) { a = 0; b = Math.min(n, 400); }
-      else { a = 0; b = n; }
-      for (var i = a; i < b; i++) {
-        var c = YT.cues[i];
-        if (!c) continue;
-        var t = c.n || (c.n = ytNorm(c.t));
-        if (!t) continue;
-        if (t === k) return { i: i, tr: c.tr };
-        // تطابق جزئي: واحد بيحتوي التاني
-        if (t.length > 6 && k.length > 6 && (t.indexOf(k) >= 0 || k.indexOf(t) >= 0)) {
-          return { i: i, tr: c.tr };
-        }
-      }
-      if (pass === 0 && n <= 400) break;
-    }
-    return null;
-  }
-
-  function ytHideNative() {
-    try {
-      var els = document.querySelectorAll(
-        '.ytp-caption-window-container,.caption-window,.ytp-caption-segment,.captions-text');
-      for (var i = 0; i < els.length; i++) {
-        var e = els[i];
-        if (e.style.visibility !== 'hidden') {
-          e.style.opacity = '0';
-          e.style.visibility = 'hidden';
-        }
-      }
-    } catch (e) {}
-  }
-
-  function ytSetText(tr, orig) {
-    if (!YT.ov) return;
-    YT.ov.style.display = 'block';
-    if (CFG.subs === 'both' && orig != null) { YT.el1.textContent = orig; }
-    YT.el2.textContent = tr || '…';
-  }
-
-  function ytTick() {
-    if (!running) return;
-    ytDbgTick();
-
-    /* ---- التحميل والبدائل ---- */
-    if (!YT.loaded && !YT.live) {
-      if (YT.tries % 10 === 0 && !ytCCIsOn()) ytEnableCC();   // نعيد المحاولة دايماً
-      if (YT.tries % 6 === 0) {
-        var c = ytCuesFromTrack();
-        if (c) ytLoadCues(c);
-      }
-      YT.tries++;
-      if (YT.tries > 250 && !YT.live) {
-        YT.live = true;
-        document.documentElement.classList.add('imt-yt');
-        showBadge('وضع مباشر — ترجمة لحظية');
-      }
-      return;
-    }
-
-    if (!document.querySelector('video')) return;
-
-    /* ---- الأفضل: نستبدل نص ترجمات يوتيوب نفسه (تنسيق ومزامنة مثاليين) ---- */
-    ytReplaceTick();
-    if (document.querySelector('.caption-window')) {
-      if (YT.ov) ytHide(false);          // ما منحتاج تراكب
-      return;
-    }
-
-    ytEnsureOverlay();
-    ytHideNative();
-
-    /* ---- الطريقة الأقوى: نتبع اللي يوتيوب عم يعرضو (مزامنة مثالية مع الصوت) ---- */
-    var shown = ytLiveText();
-    if (shown && shown !== YT.lastShown) {
-      YT.lastShown = shown;
-      if (looksTarget(shown)) return;          // ← حماية الحلقة: نصنا نحنا
-      var hit = YT.loaded ? ytLookup(shown) : null;
-      if (hit) {
-        YT.hitIdx = hit.i;
-        if (hit.tr) { ytSetText(hit.tr, shown); return; }      // ✓ ترجمة جاهزة — فورية
-        // مقطع موجود بس الترجمة لسا ما وصلت
-        ytSetText("\u2026", shown);
-        if (!YT.pending[hit.i]) {
-          YT.pending[hit.i] = 1;
-          (function (idx) {
-            bridgeTranslate([YT.cues[idx].t]).then(function (r) {
-              var t = ((r && r[0]) || '').trim();
-              delete YT.pending[idx];
-              if (t) { YT.cues[idx].tr = t; if (YT.lastShown && ytNorm(YT.lastShown) === YT.cues[idx].n) ytSetText(t); }
-            })['catch'](function () { delete YT.pending[idx]; });
-          })(hit.i);
-        }
-        return;
-      }
-      // ما لقيناه بالمقاطع → نترجم لحظياً
-      var cached = YT.liveCache[shown];
-      if (cached) { ytSetText(cached, shown); return; }
-      ytSetText("\u2026", shown);
-      if (!YT.livePending[shown]) {
-        YT.livePending[shown] = 1;
-        (function (key) {
-          bridgeTranslate([key]).then(function (r) {
-            var t = ((r && r[0]) || '').trim();
-            delete YT.livePending[key];
-            if (t) {
-              YT.liveCache[key] = t;
-              if (YT.lastShown === key) ytSetText(t, key);
-            }
-          })['catch'](function () { delete YT.livePending[key]; });
-        })(shown);
-      }
-      return;
-    }
-
-    /* ---- خطة بديلة: لو يوتيوب ما عم يعرض شي، نستعمل توقيت الملف ---- */
-    if (!YT.loaded || shown) return;
+  function subsTick() {
+    if (!running) { if (SUBS.ov) SUBS.ov.style.display = 'none'; return; }
+    if (!SUBS.cues.length) return;
     var v = document.querySelector('video');
+    if (!v) return;
+    if (!subsOverlay()) { if (SUBS.ov) SUBS.ov.style.display = 'none'; return; }
+
     var ms = v.currentTime * 1000;
     var idx = -1;
-    for (var i = 0; i < YT.cues.length; i++) {
-      var cu = YT.cues[i];
-      if (ms >= cu.s && ms < cu.e) { idx = i; break; }
+    for (var i = 0; i < SUBS.cues.length; i++) {
+      var c = SUBS.cues[i];
+      if (ms >= c.s && ms < c.e) { idx = i; break; }
     }
-    if (idx === YT.lastIdx) return;
-    YT.lastIdx = idx;
-    if (idx < 0) { ytHide(false); return; }
-    ytSetText(YT.cues[idx].tr, YT.cues[idx].t);
+    if (idx === SUBS.last) return;
+    SUBS.last = idx;
+    if (idx < 0) { SUBS.ov.style.display = 'none'; return; }
+    SUBS.ov.style.display = 'block';
+    var cue = SUBS.cues[idx];
+    SUBS.el.textContent = cue.tr || cue.t;
   }
-
-  function ytStart() {
-    if (!isYouTube() || !isWatchPage()) return;
-    if (!YT.timer) YT.timer = setInterval(ytTick, 130);
-    ytRequest();
-  }
-
-  function ytStop() {
-    if (YT.timer) { clearInterval(YT.timer); YT.timer = null; }
-    ytHide(false);
-  }
-
-  window.__imtYtReset = function () { ytReset(); if (running) setTimeout(ytStart, 1500); };
-
-  window.addEventListener('yt-navigate-finish', function () { window.__imtYtReset(); });
-  document.addEventListener('yt-page-data-updated', function () {
-    if (running && !YT.loaded && !YT.live && !YT.loading) setTimeout(ytStart, 800);
-  });
-  setInterval(function () {
-    if (!isYouTube()) return;
-    if (location.href !== YT.lastHref) { YT.lastHref = location.href; window.__imtYtReset(); }
-  }, 1500);
-  YT.lastHref = location.href;
 
   /* -------------------- الواجهة البرمجية -------------------- */
   window.__imtStart = function () {
@@ -1121,7 +698,6 @@
     }
     found.forEach(enqueue);
     startAutoLoad();
-    setTimeout(ytStart, 1500);          // ترجمات الفيديو (يوتيوب)
     showBadge('Immersive-Me · ' + CFG.target + ' · ' + (CFG.provider || '') + ' · ' + found.length + ' مقطع');
   };
 
@@ -1129,7 +705,7 @@
     running = false;
     queue = [];
     firstBatch = true;
-    ytStop();
+    subsStop();
     resetAll();
     showBadge('أُوقفت الترجمة');
   };
