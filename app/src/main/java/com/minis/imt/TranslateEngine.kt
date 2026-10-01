@@ -138,6 +138,8 @@ object TranslateEngine {
             m.contains("403") -> "ممنوع (403) — المفتاح بلا صلاحية أو الموديل غير متاح"
             m.contains("404") -> "الموديل أو العنوان غير موجود (404)"
             m.contains("429") -> "المزوّد بيرفض الطلبات (429) — جرّب بعد شوي"
+            m.contains("header value") || m.contains("0x0a") ->
+                "المفتاح فيه سطر أو مسافة — امسح الحقل وانسخ المفتاح لوحدو (يبلّش بـ sk-)"
             m.contains("HTTP 5") -> "خطأ من سيرفر المزوّد"
             m.contains("timeout", true) -> "انتهت المدة — المزوّد بطيء"
             else -> m.take(150)
@@ -380,6 +382,35 @@ object TranslateEngine {
         }
     }
 
+    /** تنظيف المفتاح: يأخذ أول قيمة تبدو مفتاحاً، ويزيل كل فراغ وسطر */
+    fun cleanKey(raw: String?): String {
+        var k = (raw ?: "").trim()
+        if (k.isEmpty()) return ""
+        // إذا المستخدم لصق نصاً طويلاً، نبحث عن السطر اللي فيه مفتاح
+        if (k.contains('\n') || k.length > 140) {
+            val line = k.lineSequence().map { it.trim() }
+                .firstOrNull { it.contains("sk-") || it.startsWith("Bearer ") }
+                ?: k.lineSequence().first().trim()
+            k = line
+        }
+        k = k.removePrefix("Bearer").removePrefix("bearer").trim()
+        k = k.replace(Regex("\\s+"), "")      // إزالة كل الفراغات
+        // إذا بقي نص طويل جداً، نأخذ أول رمز يشبه المفتاح
+        val m = Regex("""(sk-[A-Za-z0-9_\-]{20,}|[A-Za-z0-9_\-]{30,})""").find(k)
+        if (m != null) k = m.groupValues[1]
+        return k
+    }
+
+    /** هل المفتاح شكله صحيح؟ */
+    fun keyLooksWrong(raw: String?): String? {
+        val v = (raw ?: "").trim()
+        if (v.isEmpty()) return "المفتاح فاضي"
+        if (v.contains('\n')) return "المفتاح فيه أسطر متعددة — انسخ المفتاح لوحدو"
+        if (v.length > 140) return "المفتاح طويل جداً (${v.length} حرف) — يبدو إنك لصقت نص زيادة"
+        if (v.contains(' ')) return "المفتاح فيه فراغات — انسخه بلا مسافات"
+        return null
+    }
+
     private fun chatUrl(p: Provider): String {
         val base = p.baseUrl.trimEnd('/')
         return when {
@@ -408,7 +439,9 @@ object TranslateEngine {
         }
         val headers = HashMap<String, String>()
         headers["Content-Type"] = "application/json"
-        if (p.apiKey.isNotBlank()) headers["Authorization"] = "Bearer " + p.apiKey
+        // تنقية المفتاح — منع أي مسافة أو سطر جديد يفسد الترويسة
+        val key = cleanKey(p.apiKey)
+        if (key.isNotBlank()) headers["Authorization"] = "Bearer " + key
 
         val raw = httpPost(url, body.toString().toByteArray(Charsets.UTF_8), headers, timeoutMs)
         val j = JSONObject(raw)

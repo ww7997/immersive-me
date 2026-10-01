@@ -470,6 +470,8 @@ class SettingsActivity : AppCompatActivity() {
         val keyInfo = when {
             p == null -> ""
             p.apiKey.isBlank() -> " • المفتاح: ❌ فاضي"
+            TranslateEngine.keyLooksWrong(p.apiKey) != null ->
+                " • المفتاح: ⚠️ " + TranslateEngine.keyLooksWrong(p.apiKey)
             else -> " • المفتاح: ✓ ${p.apiKey.length} حرف (…${p.apiKey.takeLast(4)})"
         }
         if (p == null) {
@@ -501,8 +503,7 @@ class SettingsActivity : AppCompatActivity() {
         val p = providers[idx]                       // ← المزوّد الحقيقي بالقائمة المحلية
         p.name = nameEt.text?.toString()?.trim().orEmpty()
         p.baseUrl = baseEt.text?.toString()?.trim().orEmpty()
-        p.apiKey = (keyEt.text?.toString() ?: "").trim()
-            .removePrefix("Bearer ").removePrefix("bearer ").trim()   // نتقبّل لو لصقت "Bearer" معو
+        p.apiKey = TranslateEngine.cleanKey(keyEt.text?.toString())
         p.model = modelEt.text?.toString()?.trim().orEmpty()
         p.systemPrompt = promptEt.text?.toString().orEmpty()
         Prefs.providers = providers
@@ -612,10 +613,12 @@ class SettingsActivity : AppCompatActivity() {
             val sb = StringBuilder()
             sb.append("المحرّك: ").append(Prefs.effectiveName()).append("\n")
             val ap = Prefs.activeProvider()
+            val kw = TranslateEngine.keyLooksWrong(ap?.apiKey)
             sb.append("المفتاح: ").append(
                 when {
                     ap == null -> "غير مطلوب (محرّك مجاني)"
                     ap.apiKey.isBlank() -> "❌ فاضي — ما انحفظ!"
+                    kw != null -> "⚠️ $kw (${ap.apiKey.length} حرف)"
                     else -> "✓ ${ap.apiKey.length} حرف (…${ap.apiKey.takeLast(4)})"
                 }
             ).append("\n")
