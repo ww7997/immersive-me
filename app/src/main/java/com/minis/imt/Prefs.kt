@@ -141,6 +141,11 @@ object Prefs {
         get() = sp.getBoolean("ytDbg", false)
         set(v) = sp.edit().putBoolean("ytDbg", v).apply()
 
+    /** الترجمة العميقة للـ API — اعتراض JSON لتغذية الكاش مسبقاً */
+    var apiTranslate: Boolean
+        get() = sp.getBoolean("apiTr", true)
+        set(v) = sp.edit().putBoolean("apiTr", v).apply()
+
     /** اعتراض ملفات الترجمات من الشبكة (المعمارية الجديدة) */
     var captureSubs: Boolean
         get() = sp.getBoolean("capSubs", true)
@@ -155,6 +160,16 @@ object Prefs {
     var dialect: String
         get() = sp.getString("dialect", "sy")!!
         set(v) = sp.edit().putString("dialect", v).apply()
+
+    /** وصف حر للهجة/الأسلوب — يتجاوز القائمة الجاهزة */
+    var customDialect: String
+        get() = sp.getString("customDialect", "")!!
+        set(v) = sp.edit().putString("customDialect", v).apply()
+
+    /** شخصية الترجمة: "" | pro | academic | fun | simple | child */
+    var persona: String
+        get() = sp.getString("persona", "")!!
+        set(v) = sp.edit().putString("persona", v).apply()
 
     /** 0 = تلقائي · حجم الدفعة اللي بينبعت للموديل */
     var batchOverride: Int

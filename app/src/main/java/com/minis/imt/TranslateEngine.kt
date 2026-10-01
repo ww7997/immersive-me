@@ -79,6 +79,38 @@ object TranslateEngine {
         // نحوّل فهرس الدفعة لفهرس أصلي
         val cb: ((Int, String) -> Unit)? = onItem?.let { f -> { i, t -> f(idxs[i], t) } }
 
+        /* ===== المحرّك الهجين: جوجل فوراً → الذكاء الاصطناعي يحسّن بعدين ===== */
+        val aiProvider = Prefs.effectiveProvider()
+        if (Prefs.engineMode == "hybrid" && aiProvider != null) {
+            // ١) مسودة فورية من جوجل المجاني — بتظهر بلمح البصر
+            try {
+                val quick = Google.freeBatch(raws, target, ::fail)
+                quick.forEachIndexed { i, t ->
+                    if (t.isNotBlank()) {
+                        out[idxs[i]] = t
+                        Prefs.cachePut(ckey(raws[i], target, "hybrid-q"), t)
+                        cb?.invoke(i, t)
+                    }
+                }
+                failStreak = 0
+            } catch (e: Exception) { /* نكمّل للذكاء الاصطناعي */ }
+
+            // ٢) الترجمة الأقوى — تستبدل المسودة تدريجياً
+            val better: List<String> = try {
+                aiBatch(raws, target, aiProvider, cb)
+            } catch (e: Exception) {
+                lastError = describe(e)
+                List(raws.size) { "" }
+            }
+            better.forEachIndexed { i, t ->
+                if (t.isNotBlank()) {
+                    out[idxs[i]] = t
+                    Prefs.cachePut(ckey(raws[i], target, tag), t)
+                }
+            }
+            return out.map { it ?: "" }
+        }
+
         val results: List<String> = try {
             if (provider == null) Google.freeBatch(raws, target, ::fail)
             else aiBatch(raws, target, provider, cb)
@@ -401,15 +433,41 @@ object TranslateEngine {
     /* ==================== اللهجة ==================== */
 
     /** تعليمة اللهجة — تُضاف دائماً لبرومبت النظام عند الترجمة للعربية */
+    /** تعليمة الشخصية (أسلوب الترجمة) */
+    private fun personaHint(): String = when (Prefs.persona) {
+        "pro" -> " Keep a professional, precise, businesslike tone."
+        "academic" -> " Use an academic, formal register with precise terminology."
+        "fun" -> " Keep a light, witty, slightly sarcastic tone."
+        "simple" -> " Use very simple wording that anyone can follow easily."
+        "child" -> " Use a playful, child-friendly tone with simple words."
+        else -> ""
+    }
+
+    /** تعليمة لهجة قوية — صيغت بمساعدة Gemini Pro */
     fun dialectHint(): String {
-        if (!Prefs.target.startsWith("ar")) return ""
+        // وصف حر من المستخدم يتقدّم على كل شي
+        val custom = Prefs.customDialect.trim()
+        if (custom.isNotEmpty()) {
+            return " STYLE OVERRIDE (highest priority): $custom" + personaHint()
+        }
+        if (!Prefs.target.startsWith("ar")) return personaHint()
         return when (Prefs.dialect) {
-            "sy" -> " Translate into natural everyday Syrian (Levantine) Arabic dialect — the way people speak in Damascus. Colloquial, not formal MSA."
-            "lb" -> " Translate into natural everyday Lebanese Arabic dialect (colloquial)."
-            "eg" -> " Translate into natural everyday Egyptian Arabic dialect (colloquial)."
-            "gulf" -> " Translate into natural everyday Gulf (Khaleeji) Arabic dialect."
-            "iq" -> " Translate into natural everyday Iraqi Arabic dialect."
-            "ma" -> " Translate into natural everyday Moroccan Darija."
+            "sy" ->
+                " You are a native Damascene linguist. Translate into 100% authentic SPOKEN Syrian" +
+                " Arabic (the Shami dialect of Damascus) — it must sound exactly like a conversation" +
+                " on a Damascus street." +
+                " RULES: (1) AVOID Fusha/Modern Standard Arabic ENTIRELY — if a word sounds like it" +
+                " belongs in a textbook or a news broadcast, do not use it." +
+                " (2) MAINTAIN CONSISTENCY — every sentence must be in the same Shami dialect, no mixing." +
+                " (3) USE COMMON LOANWORDS for technical terms (use \"أونلاين\" not \"متصل بالشبكة\"," +
+                " use \"كمبيوتر\" not \"حاسوب\", use \"سيرفر\" not \"خادم\")." +
+                " (4) NEVER translate names, numbers, URLs or code." +
+                " Output only the pure Shami translation."
+            "lb" -> " Translate into natural everyday Lebanese Arabic dialect (colloquial) — spoken street Lebanese, never Fusha."
+            "eg" -> " Translate into natural everyday Egyptian Arabic dialect (colloquial) — spoken Cairene, never Fusha."
+            "gulf" -> " Translate into natural everyday Gulf (Khaleeji) Arabic dialect — spoken, never Fusha."
+            "iq" -> " Translate into natural everyday Iraqi Arabic dialect — spoken Baghdadi, never Fusha."
+            "ma" -> " Translate into natural everyday Moroccan Darija — spoken, never Fusha."
             else -> " Use clear Modern Standard Arabic (فصحى)."
         }
     }
@@ -461,6 +519,33 @@ object TranslateEngine {
         }
         if (out.length() == 0) throw RuntimeException("ما قدرنا نقرأ ملف الترجمات")
         return out.toString()
+    }
+
+    /* ==================== الشرح الفوري ==================== */
+
+    /** يشرح نصاً بلهجة المستخدم — متل ما تشرح لصاحبك */
+    fun explain(text: String): String {
+        val p = Prefs.chosenProvider()
+            ?: return "الشرح بده مفتاح ذكاء اصطناعي (الإعدادات → المزوّد)"
+        val style = when (Prefs.dialect) {
+            "sy" -> "باللهجة السورية العامية"
+            "lb" -> "باللهجة اللبنانية العامية"
+            "eg" -> "باللهجة المصرية العامية"
+            "gulf" -> "باللهجة الخليجية العامية"
+            "iq" -> "باللهجة العراقية العامية"
+            "ma" -> "بالدارجة المغربية"
+            else -> "بالعربية الفصحى المبسّطة"
+        }
+        val prompt =
+            "اشرح النص التالي $style، متل ما تشرح لصاحبك.\n" +
+            "٢-٣ جمل كحد أقصى. بلا مقدمات، بلا تكرار النص، بلا عناوين.\n" +
+            "إذا كان المصطلح تقنياً، اشرح معناه بكلمات بسيطة.\n\n" +
+            "-----BEGIN-----\n$text\n-----END-----"
+        return try {
+            aiCall(p, prompt, T_SINGLE).trim()
+        } catch (e: Exception) {
+            "✗ " + describe(e)
+        }
     }
 
     /* ==================== قائمة الموديلات ==================== */

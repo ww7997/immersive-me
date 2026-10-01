@@ -206,6 +206,46 @@ class SettingsActivity : AppCompatActivity() {
             }
             addView(dGroup)
 
+            addView(label("شخصية الترجمة (أسلوب)"))
+            val pGroup = ChipGroup(this@SettingsActivity).apply { isSingleSelection = true }
+            listOf("" to "عادي", "pro" to "احترافي", "academic" to "أكاديمي",
+                   "fun" to "ساخر", "simple" to "بسيط جداً", "child" to "طفولي").forEach { (code, lbl) ->
+                pGroup.addView(Chip(this@SettingsActivity).apply {
+                    text = lbl
+                    textSize = 13f
+                    isCheckable = true
+                    isChecked = Prefs.persona == code
+                    setOnClickListener { Prefs.persona = code }
+                })
+            }
+            addView(pGroup)
+
+            addView(label("لهجة مخصصة — وصف حر (يتقدّم على الشرائح فوق)"))
+            val cDial = TextInputEditText(this@SettingsActivity).apply {
+                hint = "مثال: لهجة حلب التجارية، بلا كلمات فرنسية، أسلوب بسيط"
+                setText(Prefs.customDialect)
+                setTextColor(Color.parseColor(C_TEXT))
+                textSize = 13f
+            }
+            val cTil = TextInputLayout(this@SettingsActivity).apply {
+                boxBackgroundColor = Color.parseColor(C_SURFACE2)
+                setBoxCornerRadii(dp(12).toFloat(), dp(12).toFloat(), dp(12).toFloat(), dp(12).toFloat())
+                addView(cDial)
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.setMargins(0, dp(6), 0, 0)
+                layoutParams = lp
+            }
+            cDial.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    Prefs.customDialect = s?.toString() ?: ""
+                }
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
+            addView(cTil)
+
             addView(MaterialSwitch(this@SettingsActivity).apply {
                 text = "ترجمة تدريجية — الأسرع (يترجم اللي قدامك، والباقي مع التمرير)"
                 textSize = 13f

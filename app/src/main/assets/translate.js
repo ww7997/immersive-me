@@ -447,6 +447,14 @@
   /* -------------------- ترجمة النص المظلَّل -------------------- */
   var selBubble = null;
   var selTimer = null;
+  var expSeq = 0;
+
+  /** نتيجة الشرح الفوري */
+  window.__imtExplain = function (id, text) {
+    if (!selBubble) return;
+    var b = selBubble.querySelector('.b');
+    if (b) b.textContent = text || 'تعذّر الشرح';
+  };
 
   function hideSel() {
     if (selBubble) { selBubble.remove(); selBubble = null; }
@@ -499,6 +507,7 @@
     var acts = document.createElement('div');
     acts.className = 'a';
     var aCopy = document.createElement('span'); aCopy.textContent = '📋 نسخ';
+    var aExp = document.createElement('span'); aExp.textContent = '💡 اشرح';
     var aClose = document.createElement('span'); aClose.textContent = '✕ إغلاق';
     aCopy.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -507,8 +516,14 @@
         else if (ImtNative && ImtNative.notify) ImtNative.notify('النسخ غير مدعوم هون');
       } catch (err) {}
     });
+    aExp.addEventListener('click', function (e) {
+      e.stopPropagation();
+      body.textContent = '…';
+      try { ImtNative.explain('e' + (++expSeq), text); }
+      catch (err) { body.textContent = 'الشرح بده مفتاح ذكاء اصطناعي'; }
+    });
     aClose.addEventListener('click', function (e) { e.stopPropagation(); hideSel(); });
-    acts.appendChild(aCopy); acts.appendChild(aClose);
+    acts.appendChild(aCopy); acts.appendChild(aExp); acts.appendChild(aClose);
 
     selBubble.appendChild(src);
     selBubble.appendChild(body);
@@ -681,6 +696,104 @@
     SUBS.el.textContent = cue.tr || cue.t;
   }
 
+  /* ==================== الترجمة العميقة للـ API ====================
+   * نعترض ردود fetch/XHR اللي ترجّع JSON (ريديت، تويتر، أي تطبيق صفحة واحدة)،
+   * نستخرج حقول النص، وندفّها للكاش **قبل** ما الصفحة ترسمها.
+   * النتيجة: لما النص يظهر، ترجمتو تكون جاهزة بالكاش → ظهور فوري.
+   * ولا نؤخّر أي طلب — الصفحة ما بتتأثر.
+   * ================================================================= */
+  var NET = { seen: {}, count: 0 };
+
+  function netNorm(s) {
+    return String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function netCollect(o, out, depth) {
+    if (depth > 6 || out.length > 300) return;
+    if (typeof o === 'string') {
+      var s = o.trim();
+      if (s.length >= 12 && s.length <= 700 &&
+          /[A-Za-z\u00C0-\u024F]/.test(s) &&
+          s.indexOf('http') !== 0 && s.indexOf('://') < 0) {
+        out.push(s);
+      }
+      return;
+    }
+    if (Array.isArray(o)) {
+      for (var i = 0; i < o.length && i < 80; i++) netCollect(o[i], out, depth + 1);
+      return;
+    }
+    if (o && typeof o === 'object') {
+      for (var k in o) {
+        if (Object.prototype.hasOwnProperty.call(o, k)) netCollect(o[k], out, depth + 1);
+      }
+    }
+  }
+
+  function netHarvest(body) {
+    if (!body || body.length < 24 || body.length > 3000000) return;
+    var found = [];
+    try { netCollect(JSON.parse(body), found, 0); } catch (e) { return; }
+    var fresh = [];
+    for (var i = 0; i < found.length && fresh.length < 30; i++) {
+      var s = found[i];
+      var k = netNorm(s);
+      if (!k || NET.seen[k]) continue;
+      NET.seen[k] = 1;
+      fresh.push(s);
+    }
+    if (!fresh.length) return;
+    if (Object.keys(NET.seen).length > 6000) NET.seen = {};
+    NET.count += fresh.length;
+    report();
+    // نترجمها بالخلفية — النتيجة بتتخزّن بالكاش
+    bridgeTranslate(fresh).then(function () {}).catch(function () {});
+  }
+
+  function netPatch() {
+    if (window.__imtNetPatched) return;
+    window.__imtNetPatched = true;
+
+    // ١) fetch
+    try {
+      var of = window.fetch;
+      if (of) {
+        window.fetch = function () {
+          var p = of.apply(this, arguments);
+          try {
+            p.then(function (res) {
+              try {
+                if (!running || !CFG.api) return;
+                var ct = (res.headers && res.headers.get('content-type')) || '';
+                if (ct.indexOf('json') < 0) return;
+                res.clone().text().then(netHarvest)['catch'](function () {});
+              } catch (e) {}
+            })['catch'](function () {});
+          } catch (e) {}
+          return p;
+        };
+      }
+    } catch (e) {}
+
+    // ٢) XMLHttpRequest
+    try {
+      var OX = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function () {
+        try {
+          this.addEventListener('load', function () {
+            try {
+              if (!running || !CFG.api) return;
+              var ct = (this.getResponseHeader && this.getResponseHeader('content-type')) || '';
+              if (ct.indexOf('json') < 0) return;
+              netHarvest(this.responseText);
+            } catch (e) {}
+          });
+        } catch (e) {}
+        return OX.apply(this, arguments);
+      };
+    } catch (e) {}
+  }
+
   /* -------------------- الواجهة البرمجية -------------------- */
   window.__imtStart = function () {
     readConfig();
@@ -689,6 +802,7 @@
     injectCSS();
     startObserver();
     tuneFromConfig();
+    netPatch();                        // نفعّل اعتراض JSON (إن كان مفعّلاً)
     var found = collect();
     stats.total = found.length;
     stats.done = 0;

@@ -94,6 +94,34 @@ class MainActivity : AppCompatActivity() {
     private var netRetries = 0
     private var pageReady = false
 
+    /** منتقي ملفات EPUB */
+    private val bookPicker = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) loadBook(uri)
+    }
+
+    /** يفتح كتاب EPUB ويعرض فصولو بصفحة واحدة ليعمل عليها محرّك الترجمة */
+    private fun loadBook(uri: android.net.Uri) {
+        tvStatus.text = "عم يفتح الكتاب…"
+        pool.execute {
+            val book = EpubReader.open(this, uri)
+            main.post {
+                if (destroyed) return@post
+                if (book == null) { snack("تعذّر فتح ملف EPUB"); return@post }
+                selectTab(R.id.tab_browser)
+                bottomNav.selectedItemId = R.id.tab_browser
+                pageReady = false
+                try {
+                    web.loadDataWithBaseURL(
+                        "https://book.local/", book.html, "text/html", "utf-8", null
+                    )
+                    tvStatus.text = "📖 ${book.title} · ${book.chapters} فصل — اضغط ترجمة"
+                } catch (e: Exception) { snack("تعذّر العرض") }
+            }
+        }
+    }
+
     /** نغيّر وكيل المستخدم فقط عند تفعيل وضع سطح المكتب — وإلا نرجع الافتراضي */
     private fun applyUaFor(@Suppress("UNUSED_PARAMETER") url: String?) {
         val want: String? = if (Prefs.desktopMode) UA_DESKTOP else null
@@ -493,6 +521,16 @@ class MainActivity : AppCompatActivity() {
 
         title("المتصفح")
         root.addView(MaterialButton(this).apply {
+            text = "📖 افتح كتاب EPUB"
+            textSize = 13f
+            setOnClickListener {
+                sheet.dismiss()
+                try {
+                    bookPicker.launch(arrayOf("application/epub+zip", "application/octet-stream", "*/*"))
+                } catch (e: Exception) { snack("تعذّر فتح منتقي الملفات") }
+            }
+        })
+        root.addView(MaterialButton(this).apply {
             text = "🧹 تصفير بيانات المتصفح (كاش + كوكيز)"
             textSize = 13f
             setOnClickListener {
@@ -521,6 +559,16 @@ class MainActivity : AppCompatActivity() {
         })
 
         title("ترجمات الفيديو")
+        root.addView(MaterialSwitch(this).apply {
+            text = "ترجمة عميقة للـ API (محتوى ديناميكي — ريديت/تويتر)"
+            textSize = 14f
+            setTextColor(C_TEXT)
+            isChecked = Prefs.apiTranslate
+            setOnCheckedChangeListener { _, v ->
+                Prefs.apiTranslate = v
+                snack(if (v) "الترجمة العميقة مفعّلة" else "أُوقفت الترجمة العميقة")
+            }
+        })
         root.addView(MaterialSwitch(this).apply {
             text = "اعتراض ترجمات الفيديو من الشبكة"
             textSize = 14f
@@ -574,6 +622,7 @@ class MainActivity : AppCompatActivity() {
         val engGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
         listOf(
             "fast" to "⚡ سريع (مجاني)",
+            "hybrid" to "🧠 هجين (فوري + جودة)",
             "auto" to "⚙️ تلقائي",
             "quality" to "🎯 دقيق (مفتاحك)"
         ).forEach { (code, lbl) ->
@@ -584,12 +633,13 @@ class MainActivity : AppCompatActivity() {
                 isChecked = Prefs.engineMode == code
                 setOnClickListener {
                     Prefs.engineMode = code
-                    snack(if (code == "fast") "⚡ وضع سريع — جوجل، بلا مفتاح، فوري"
-                          else if (code == "quality") "🎯 وضع دقيق — " + Prefs.effectiveName()
-                          else "⚙️ تلقائي — " + Prefs.effectiveName())
-                    if (Prefs.enabled) {
-                        applyLangChange()
-                    }
+                    snack(when (code) {
+                        "fast" -> "⚡ سريع — جوجل، بلا مفتاح، فوري"
+                        "hybrid" -> "🧠 هجين — ظهور فوري بجوجل ثم تحسين بمفتاحك"
+                        "quality" -> "🎯 دقيق — " + Prefs.effectiveName()
+                        else -> "⚙️ تلقائي — " + Prefs.effectiveName()
+                    })
+                    if (Prefs.enabled) applyLangChange()
                     sheet.dismiss()
                 }
             })
@@ -943,10 +993,12 @@ class MainActivity : AppCompatActivity() {
             o.put("input", Prefs.inputTranslate)
             o.put("lazy", Prefs.lazyTranslate)
             o.put("subs", if (Prefs.subsBilingual) "both" else "tr")
+            o.put("api", Prefs.apiTranslate)
             val ai = Prefs.effectiveProvider() != null
+            val hybrid = Prefs.engineMode == "hybrid" && ai
             // دفعات أصغر + تزامن أعلى = نتائج تظهر أسرع بكثير مع موديلات الـ AI
-            val b = Prefs.batchOverride.takeIf { it > 0 } ?: 6
-            val c = Prefs.concOverride.takeIf { it > 0 } ?: if (ai) 4 else 2
+            val b = Prefs.batchOverride.takeIf { it > 0 } ?: if (hybrid) 8 else 6
+            val c = Prefs.concOverride.takeIf { it > 0 } ?: if (ai) (if (hybrid) 5 else 4) else 2
             o.put("batch", b)
             o.put("conc", c)
             return o.toString()
@@ -981,6 +1033,21 @@ class MainActivity : AppCompatActivity() {
                 Log.d("IMT", "batch ${texts.size} in ${ms}ms")
                 TranslateEngine.lastError?.let { err -> main.post { showEngineError(err) } }
                 reply(id, JSONArray(out).toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun explain(id: String, text: String) {
+            pool.execute {
+                val out = try {
+                    TranslateEngine.explain(text)
+                } catch (e: Exception) { "✗ " + TranslateEngine.describe(e) }
+                main.post {
+                    if (destroyed) return@post
+                    val js = "window.__imtExplain(" + JSONObject.quote(id) + "," +
+                             JSONObject.quote(out) + ")"
+                    try { web.evaluateJavascript(js, null) } catch (e: Exception) {}
+                }
             }
         }
 
