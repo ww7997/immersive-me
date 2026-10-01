@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>قارئ PDF</title>
+<style>
+  :root{ --bg:#0D1015; --card:#161A21; --txt:#E7EAF2; --muted:#8B94A7; --brand:#7BA0FF; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,'Noto Kufi Arabic',sans-serif;}
+  #bar{position:sticky;top:0;z-index:10;background:var(--card);padding:10px 14px;
+       display:flex;align-items:center;gap:10px;box-shadow:0 2px 10px rgba(0,0,0,.5);}
+  #bar .t{flex:1;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #bar button{background:#25282E;color:var(--txt);border:0;border-radius:9px;padding:7px 13px;font-size:13px;font-family:inherit}
+  #bar button:active{background:#31343c}
+  #host{padding:12px 10px 70px}
+  .pg{margin:0 0 26px}
+  .pg canvas{width:100%;height:auto;display:block;border-radius:10px;
+             box-shadow:0 4px 18px rgba(0,0,0,.55);background:#fff}
+  .pgnum{font-size:10.5px;color:#5C6478;text-align:center;margin:6px 0 10px;letter-spacing:.08em}
+  .txt{margin-top:10px}
+  .txt p{font-size:15px;line-height:1.75;color:#cfd6e4;direction:ltr;text-align:left;
+         margin-bottom:4px;unicode-bidi:plaintext}
+  .loading{padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
+  .err{color:#FF8A8A;padding:20px;font-size:14px;line-height:1.7}
+</style>
+</head>
+<body>
+<div id="bar" data-imt-skip="1">
+  <button id="btnTop">▲ البداية</button>
+  <span class="t" id="title" data-imt-skip="1">قارئ PDF</span>
+  <button id="btnTr">译 ترجمة</button>
+</div>
+<div id="host"><div class="loading" data-imt-skip="1">جاهز لفتح الملف…</div></div>
+
+<script src="pdfjs/pdf.min.js"></script>
+<script>
+(function () {
+  var parts = [], total = 0, pdfDoc = null, rendered = 0;
+  var host = document.getElementById('host');
+  var titleEl = document.getElementById('title');
+
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdfjs/pdf.worker.min.js';
+  }
+
+  function status(t) { titleEl.textContent = t; }
+
+  /* ---- استقبال الملف من التطبيق على أجزاء ---- */
+  window.__imtPdfBegin = function () { parts = []; total = 0; status('عم يستقبل الملف…'); };
+
+  window.__imtPdfChunk = function (b64) { parts.push(b64); total += b64.length; };
+
+  window.__imtPdfEnd = function (name) {
+    if (!window.pdfjsLib) { fail('محرّك pdf.js ما تحمّل'); return; }
+    status('عم يفتح الكتاب…');
+    var bin;
+    try { bin = atob(parts.join('')); } catch (e) { fail('تعذّر فكّ الملف'); return; }
+    parts = [];
+    var data = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+    openPdf(data, name);
+  };
+
+  function fail(msg) { host.innerHTML = '<div class="err" data-imt-skip="1">✗ ' + msg + '</div>'; status('فشل'); }
+
+  /* ---- العرض: صورة الصفحة + نصّها (لتنترجم) ---- */
+  function openPdf(data, name) {
+    status('عم يحلّل…');
+    pdfjsLib.getDocument({ data: data }).promise.then(function (pdf) {
+      pdfDoc = pdf;
+      host.innerHTML = '';
+      rendered = 0;
+      status('كتاب: ' + (name || 'PDF') + ' · ' + pdf.numPages + ' صفحة');
+      renderPage(1, pdf.numPages);
+    })['catch'](function (e) { fail('تعذّر فتح الملف: ' + (e && e.message ? e.message : e)); });
+  }
+
+  function renderPage(n, totalPages) {
+    if (n > totalPages) { status(totalPages + ' صفحة جاهزة — اضغط ترجمة'); return; }
+    pdfDoc.getPage(n).then(function (page) {
+      var vp = page.getViewport({ scale: 1.6 });
+      var wrap = document.createElement('div');
+      wrap.className = 'pg';
+
+      var cv = document.createElement('canvas');
+      cv.width = Math.floor(vp.width);
+      cv.height = Math.floor(vp.height);
+      wrap.appendChild(cv);
+
+      var num = document.createElement('div');
+      num.className = 'pgnum';
+      num.setAttribute('data-imt-skip','1');
+      num.textContent = '— صفحة ' + n + ' —';
+      wrap.appendChild(num);
+
+      var box = document.createElement('div');
+      box.className = 'txt';
+      wrap.appendChild(box);
+      host.appendChild(wrap);
+
+      page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise.then(function () {
+        return page.getTextContent();
+      }).then(function (tc) {
+        buildText(box, tc);
+        rendered++;
+        status('عم يعرض… ' + rendered + '/' + totalPages);
+        renderPage(n + 1, totalPages);
+      })['catch'](function () {
+        status('عم يعرض… ' + n + '/' + totalPages);
+        renderPage(n + 1, totalPages);
+      });
+    })['catch'](function () { renderPage(n + 1, totalPages); });
+  }
+
+  /* ---- نبني فقرات من طبقة النص (تجميع حسب السطر ثم الفقرة) ---- */
+  function buildText(box, tc) {
+    var lines = [], cur = '', lastY = null;
+    var items = (tc && tc.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var s = it.str || '';
+      var y = it.transform ? it.transform[5] : 0;
+      if (lastY !== null && Math.abs(y - lastY) > 4) {
+        if (cur.trim()) lines.push(cur.trim());
+        cur = '';
+      }
+      cur += s;
+      if (it.hasEOL) { if (cur.trim()) lines.push(cur.trim()); cur = ''; }
+      lastY = y;
+    }
+    if (cur.trim()) lines.push(cur.trim());
+
+    // ندمج الأسطر القصيرة المتتالية في فقرة
+    var para = '', out = [];
+    for (var k = 0; k < lines.length; k++) {
+      var L = lines[k];
+      if (!L) continue;
+      para += (para ? ' ' : '') + L;
+      var endPunct = /[.!?؟:;]\s*$/.test(L);
+      if (endPunct || para.length > 420) {
+        out.push(para); para = '';
+      }
+    }
+    if (para.trim()) out.push(para);
+
+    for (var m = 0; m < out.length; m++) {
+      var t = out[m].replace(/\s+/g, ' ').trim();
+      if (t.length < 6) continue;
+      if (!/[A-Za-z\u00C0-\u024F\u0400-\u04FF]/.test(t)) continue;
+      var p = document.createElement('p');
+      p.textContent = t;
+      box.appendChild(p);
+    }
+    if (!box.children.length) box.style.display = 'none';
+  }
+
+  document.getElementById('btnTop').onclick = function () { window.scrollTo({ top: 0 }); };
+  document.getElementById('btnTr').onclick = function () {
+    var b = document.getElementById('btnTr');
+    if (!window.__imtToggle) { b.textContent = 'المحرّك مو جاهز'; return; }
+    window.__imtToggle();
+    b.textContent = (window.__IMT_LOADED__ && document.querySelector('.imt-trans')) ? '⏸ إيقاف' : '译 ترجمة';
+  };
+})();
+</script>
+</body>
+</html>

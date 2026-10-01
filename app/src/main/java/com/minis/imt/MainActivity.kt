@@ -101,6 +101,68 @@ class MainActivity : AppCompatActivity() {
         if (uri != null) loadBook(uri)
     }
 
+    /** منتقي ملفات PDF */
+    private val pdfPicker = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) loadPdf(uri)
+    }
+
+    /** يفتح ملف PDF في عارض pdf.js ويترجمو بنفس المحرّك */
+    private fun loadPdf(uri: android.net.Uri) {
+        tvStatus.text = "عم يقرأ الملف…"
+        pool.execute {
+            val bytes: ByteArray? = try {
+                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            } catch (e: Exception) { null }
+            if (destroyed) return@execute
+            if (bytes == null || bytes.isEmpty()) {
+                main.post { snack("تعذّر قراءة الملف") }
+                return@execute
+            }
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.take(60) ?: "document.pdf"
+            val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            main.post {
+                if (destroyed) return@post
+                selectTab(R.id.tab_browser)
+                bottomNav.selectedItemId = R.id.tab_browser
+                pageReady = false
+                try {
+                    web.settings.allowFileAccess = true
+                    web.loadUrl("file:///android_asset/pdfview.html")
+                    tvStatus.text = "📄 " + name + " · عم يفتح…"
+                    main.postDelayed({ sendPdf(b64, name) }, 2200)
+                } catch (e: Exception) { snack("تعذّر فتح العارض") }
+            }
+        }
+    }
+
+    /** نرسل محتوى الملف للعارض على أجزاء — منشان ما نجمّد الواجهة */
+    private fun sendPdf(b64: String, name: String) {
+        if (destroyed) return
+        web.evaluateJavascript("window.__imtPdfBegin && window.__imtPdfBegin();", null)
+        val CHUNK = 500_000
+        var pos = 0
+        val h = Handler(Looper.getMainLooper())
+        val step = object : Runnable {
+            override fun run() {
+                if (destroyed) return
+                if (pos >= b64.length) {
+                    web.evaluateJavascript(
+                        "window.__imtPdfEnd && window.__imtPdfEnd(" + JSONObject.quote(name) + ");", null)
+                    return
+                }
+                val end = minOf(pos + CHUNK, b64.length)
+                val part = b64.substring(pos, end)
+                pos = end
+                web.evaluateJavascript(
+                    "window.__imtPdfChunk && window.__imtPdfChunk(" + JSONObject.quote(part) + ");", null)
+                h.postDelayed(this, 30)
+            }
+        }
+        h.post(step)
+    }
+
     /** يفتح كتاب EPUB ويعرض فصولو بصفحة واحدة ليعمل عليها محرّك الترجمة */
     private fun loadBook(uri: android.net.Uri) {
         tvStatus.text = "عم يفتح الكتاب…"
@@ -127,6 +189,7 @@ class MainActivity : AppCompatActivity() {
         val want: String? = if (Prefs.desktopMode) UA_DESKTOP else null
         try {
             if (web.settings.userAgentString != want) web.settings.userAgentString = want
+            web.settings.allowFileAccess = url != null && url.startsWith("file:///android_asset/")
         } catch (e: Exception) {}
     }
 
@@ -561,6 +624,15 @@ class MainActivity : AppCompatActivity() {
         })
 
         title("المتصفح")
+        root.addView(MaterialButton(this).apply {
+            text = "📄 افتح ملف PDF"
+            textSize = 13f
+            setOnClickListener {
+                sheet.dismiss()
+                try { pdfPicker.launch(arrayOf("application/pdf")) }
+                catch (e: Exception) { snack("تعذّر فتح منتقي الملفات") }
+            }
+        })
         root.addView(MaterialButton(this).apply {
             text = "📖 افتح كتاب EPUB"
             textSize = 13f
