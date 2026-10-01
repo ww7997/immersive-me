@@ -480,6 +480,47 @@ class MainActivity : AppCompatActivity() {
             setTypeface(typeface, Typeface.BOLD); setPadding(0, dp(10), 0, 0)
         })
 
+        title("محرّك الترجمة")
+        val engGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
+        listOf(
+            "fast" to "⚡ سريع (مجاني)",
+            "hybrid" to "🧠 هجين (فوري + جودة)",
+            "auto" to "⚙️ تلقائي",
+            "quality" to "🎯 دقيق (مفتاحك)"
+        ).forEach { (code, lbl) ->
+            engGroup.addView(Chip(this).apply {
+                text = lbl
+                textSize = 12f
+                isCheckable = true
+                isChecked = Prefs.engineMode == code
+                setOnClickListener {
+                    Prefs.engineMode = code
+                    snack(when (code) {
+                        "fast" -> "⚡ سريع — جوجل، بلا مفتاح، فوري"
+                        "hybrid" -> "🧠 هجين — ظهور فوري بجوجل ثم تحسين بمفتاحك"
+                        "quality" -> "🎯 دقيق — " + Prefs.effectiveName()
+                        else -> "⚙️ تلقائي — " + Prefs.effectiveName()
+                    })
+                    if (Prefs.enabled) applyLangChange()
+                    sheet.dismiss()
+                }
+            })
+        }
+        root.addView(engGroup)
+
+        root.addView(TextView(this).apply {
+            text = "الحالي: " + Prefs.effectiveName()
+            setTextColor(C_BRAND); textSize = 13f
+            setPadding(0, dp(10), 0, 0)
+        })
+        root.addView(MaterialButton(this).apply {
+            text = "إدارة المفاتيح والمحرّكات"; textSize = 13f
+            setOnClickListener {
+                sheet.dismiss()
+                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+            }
+        })
+
         title("لغة الترجمة")
         val langGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
         LANGS.forEach { (code, label) ->
@@ -618,48 +659,13 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        title("محرّك الترجمة")
-        val engGroup = ChipGroup(this).apply { isSingleSelection = true; isSelectionRequired = true }
-        listOf(
-            "fast" to "⚡ سريع (مجاني)",
-            "hybrid" to "🧠 هجين (فوري + جودة)",
-            "auto" to "⚙️ تلقائي",
-            "quality" to "🎯 دقيق (مفتاحك)"
-        ).forEach { (code, lbl) ->
-            engGroup.addView(Chip(this).apply {
-                text = lbl
-                textSize = 12f
-                isCheckable = true
-                isChecked = Prefs.engineMode == code
-                setOnClickListener {
-                    Prefs.engineMode = code
-                    snack(when (code) {
-                        "fast" -> "⚡ سريع — جوجل، بلا مفتاح، فوري"
-                        "hybrid" -> "🧠 هجين — ظهور فوري بجوجل ثم تحسين بمفتاحك"
-                        "quality" -> "🎯 دقيق — " + Prefs.effectiveName()
-                        else -> "⚙️ تلقائي — " + Prefs.effectiveName()
-                    })
-                    if (Prefs.enabled) applyLangChange()
-                    sheet.dismiss()
-                }
-            })
+        // نغلّفها بـ ScrollView — منشان كل الأقسام تكون قابلة للوصول
+        val scroll = android.widget.ScrollView(this).apply {
+            setBackgroundColor(C_SURFACE)
+            isFillViewport = true
         }
-        root.addView(engGroup)
-
-        root.addView(TextView(this).apply {
-            text = "الحالي: " + Prefs.effectiveName()
-            setTextColor(C_BRAND); textSize = 13f
-            setPadding(0, dp(10), 0, 0)
-        })
-        root.addView(MaterialButton(this).apply {
-            text = "إدارة المفاتيح والمحرّكات"; textSize = 13f
-            setOnClickListener {
-                sheet.dismiss()
-                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
-            }
-        })
-
-        sheet.setContentView(root)
+        scroll.addView(root)
+        sheet.setContentView(scroll)
         sheet.show()
     }
 
