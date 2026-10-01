@@ -287,6 +287,11 @@ object Prefs {
 
     fun cacheSize(): Int = memCache.size
 
+    /** إنهاء خيط الكتابة — يُنادى من onDestroy */
+    fun shutdown() {
+        try { ioPool.shutdown() } catch (e: Exception) {}
+    }
+
     fun cacheGet(key: String): String? = memCache[key]
 
     fun cachePut(key: String, value: String) {

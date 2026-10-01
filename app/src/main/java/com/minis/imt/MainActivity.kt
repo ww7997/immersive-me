@@ -92,6 +92,7 @@ class MainActivity : AppCompatActivity() {
     private var ytFixAt = 0L
     private var destroyed = false
     private var netRetries = 0
+    private var pageReady = false
 
     /** نغيّر وكيل المستخدم فقط عند تفعيل وضع سطح المكتب — وإلا نرجع الافتراضي */
     private fun applyUaFor(@Suppress("UNUSED_PARAMETER") url: String?) {
@@ -696,6 +697,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                pageReady = false
                 if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
                 currentHost = hostOf(url)
             }
@@ -736,6 +738,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
+                pageReady = true
                 if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
                 currentHost = hostOf(url)
                 if (Prefs.isAutoSite(currentHost)) Prefs.enabled = true
@@ -767,8 +770,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun injectTranslator() {
         try {
-            web.evaluateJavascript(loadScript(), null)
-            web.evaluateJavascript("window.__imtBoot && window.__imtBoot();", null)
+            if (!pageReady) return
+            // نداء واحد: نحن السكريبت ثم نستدعي الإقلاع — يمنع سباق التنفيذ
+            val js = loadScript() + "\ntry{window.__imtBoot&&window.__imtBoot();}catch(e){}"
+            web.evaluateJavascript(js, null)
             main.postDelayed({ paintAll() }, 400)
         } catch (e: Exception) {
             Log.e("IMT", "inject failed", e)
@@ -806,7 +811,9 @@ class MainActivity : AppCompatActivity() {
         paintAll()
         injectedScript = null
         buildHome()
-        web.evaluateJavascript("window.__imtConfigChanged && window.__imtConfigChanged();", null)
+        if (pageReady) {          // لا ننادي JS على صفحة مو جاهزة
+            web.evaluateJavascript("window.__imtConfigChanged && window.__imtConfigChanged();", null)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -818,6 +825,7 @@ class MainActivity : AppCompatActivity() {
         destroyed = true
         main.removeCallbacksAndMessages(null)      // نلغي أي مهام معلّقة قبل التدمير
         Prefs.flushCache()
+        Prefs.shutdown()                           // ننهي خيط كتابة الكاش
         pool.shutdown()                            // إنهاء لطيف بدل shutdownNow
         try { web.stopLoading() } catch (e: Exception) {}
         web.removeJavascriptInterface("ImtNative")
