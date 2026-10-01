@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnGo: MaterialButton
     private lateinit var fabTr: com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
     private lateinit var btnMenu: MaterialButton
+    private lateinit var btnBack: MaterialButton
     private lateinit var tvStatus: TextView
     private lateinit var tvChip: TextView
 
@@ -53,6 +54,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeScreen: ScrollView
     private lateinit var soonScreen: LinearLayout
     private lateinit var homeRoot: LinearLayout
+    private lateinit var discoverRoot: LinearLayout
+    private lateinit var textRoot: LinearLayout
+    private lateinit var discoverScreen: ScrollView
+    private lateinit var textScreen: ScrollView
     private lateinit var soonIcon: TextView
     private lateinit var soonTitle: TextView
     private lateinit var soonBody: TextView
@@ -63,8 +68,7 @@ class MainActivity : AppCompatActivity() {
     private val pool = Executors.newFixedThreadPool(4)
     private var injectedScript: String? = null
     private var currentHost: String? = null
-    private var lastTab = R.id.tab_browser
-    private var homeVisible = false
+    private var lastTab = R.id.tab_home
     private var suppressNav = false
     private var lastBatchMs = 0L
     private var lastBatchCount = 0
@@ -75,12 +79,19 @@ class MainActivity : AppCompatActivity() {
         tvStatus.text = if (ytInfo.isBlank()) trInfo else trInfo + "  |  " + ytInfo
     }
 
-    private val C_BRAND = Color.parseColor("#7BA0FF")
-    private val C_OK = Color.parseColor("#46D68C")
-    private val C_MUTED = Color.parseColor("#8B94A7")
-    private val C_TEXT = Color.parseColor("#E7EAF2")
-    private val C_SURFACE = Color.parseColor("#161A21")
-    private val C_SURFACE2 = Color.parseColor("#1F242D")
+    private val ACCENT = Color.parseColor("#E9457B")
+    private val ACCENT_SOFT = Color.parseColor("#FCE4EE")
+    private val TEXT = Color.parseColor("#16161A")
+    private val MUTED = Color.parseColor("#8A8A94")
+    private val LINE = Color.parseColor("#E8E8EE")
+
+    // أسماء قديمة (اللوحة السريعة) — صارت بألوان فاتحة
+    private val C_BRAND = ACCENT
+    private val C_OK = Color.parseColor("#22B573")
+    private val C_MUTED = MUTED
+    private val C_TEXT = TEXT
+    private val C_SURFACE = Color.WHITE
+    private val C_SURFACE2 = Color.parseColor("#EFEFF4")
 
     private val UA =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
@@ -124,8 +135,7 @@ class MainActivity : AppCompatActivity() {
             val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
             main.post {
                 if (destroyed) return@post
-                selectTab(R.id.tab_browser)
-                bottomNav.selectedItemId = R.id.tab_browser
+                goBrowser(null)
                 pageReady = false
                 try {
                     web.settings.allowFileAccess = true
@@ -171,8 +181,7 @@ class MainActivity : AppCompatActivity() {
             main.post {
                 if (destroyed) return@post
                 if (book == null) { snack("تعذّر فتح ملف EPUB"); return@post }
-                selectTab(R.id.tab_browser)
-                bottomNav.selectedItemId = R.id.tab_browser
+                goBrowser(null)
                 pageReady = false
                 try {
                     web.loadDataWithBaseURL(
@@ -217,6 +226,11 @@ class MainActivity : AppCompatActivity() {
         homeScreen = findViewById(R.id.homeScreen)
         soonScreen = findViewById(R.id.soonScreen)
         homeRoot = findViewById(R.id.homeRoot)
+        discoverRoot = findViewById(R.id.discoverRoot)
+        textRoot = findViewById(R.id.textRoot)
+        discoverScreen = findViewById(R.id.discoverScreen)
+        textScreen = findViewById(R.id.textScreen)
+        btnBack = findViewById(R.id.btnBack)
         soonIcon = findViewById(R.id.soonIcon)
         soonTitle = findViewById(R.id.soonTitle)
         soonBody = findViewById(R.id.soonBody)
@@ -226,17 +240,17 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupToolbar()
         setupNav()
-        buildHome()
+        if (lastTab == R.id.tab_home) buildHome()
         paintAll()
 
         if (savedInstanceState == null) {
             suppressNav = true
-            bottomNav.selectedItemId = R.id.tab_browser
+            bottomNav.selectedItemId = R.id.tab_home
             suppressNav = false
-            showHome()                       // نبدأ من الشاشة الرئيسية
+            selectTab(R.id.tab_home)
             web.loadUrl(intent?.getStringExtra("url") ?: Prefs.homePage)
         } else {
-            if (lastTab == R.id.tab_browser) showHome() else selectTab(lastTab)
+            selectTab(lastTab)
         }
     }
 
@@ -248,62 +262,34 @@ class MainActivity : AppCompatActivity() {
         bottomNav.setOnItemSelectedListener(object : NavigationBarView.OnItemSelectedListener {
             override fun onNavigationItemSelected(item: android.view.MenuItem): Boolean {
                 if (suppressNav) return true          // تغيير برمجي، مو ضغطة مستخدم
-                when (item.itemId) {
-                    R.id.tab_settings -> {
-                        suppressNav = true
-                        startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
-                        bottomNav.selectedItemId = lastTab
-                        suppressNav = false
-                        return false
-                    }
-                    R.id.tab_browser -> {
-                        // ضغطة أولى → المتصفح · ضغطة تانية → الرئيسية (تبديل)
-                        if (lastTab == R.id.tab_browser && !homeVisible) showHome()
-                        else selectTab(R.id.tab_browser)
-                        return true
-                    }
-                    else -> { selectTab(item.itemId); return true }
-                }
+                selectTab(item.itemId); return true
             }
         })
     }
 
     private fun selectTab(id: Int) {
         lastTab = id
-        homeVisible = false
         browserScreen.visibility = View.GONE
         homeScreen.visibility = View.GONE
+        discoverScreen.visibility = View.GONE
+        textScreen.visibility = View.GONE
         soonScreen.visibility = View.GONE
 
         when (id) {
-            R.id.tab_browser -> {
-                browserScreen.visibility = View.VISIBLE
-                paintAll()
-            }
-            R.id.tab_files -> {
-                showSoon(
-                    "\uD83D\uDCC4", "ترجمة PDF",
-                    "افتح أي PDF واقرأه بالعربية والإنجليزية معاً.\n\nقيد البناء: نستعمل pdf.js حتى تعمل نفس محرّك الترجمة.",
-                    "افتح ملف PDF", null
-                )
-            }
+            R.id.tab_home -> { homeScreen.visibility = View.VISIBLE; buildHome() }
+            R.id.tab_discover -> { discoverScreen.visibility = View.VISIBLE; buildDiscover() }
+            R.id.tab_text -> { textScreen.visibility = View.VISIBLE; buildText() }
         }
     }
 
-    private fun showHome() {
-        homeVisible = true
-        browserScreen.visibility = View.GONE
-        soonScreen.visibility = View.GONE
-        homeScreen.visibility = View.VISIBLE
-        buildHome()
-    }
-
-    /** فتح المتصفح على رابط — بلا ما تتشغّل قفزة التنقّل */
+    /** يفتح المتصفح على رابط */
     private fun goBrowser(url: String?) {
-        suppressNav = true
-        bottomNav.selectedItemId = R.id.tab_browser
-        suppressNav = false
-        selectTab(R.id.tab_browser)
+        browserScreen.visibility = View.VISIBLE
+        homeScreen.visibility = View.GONE
+        discoverScreen.visibility = View.GONE
+        textScreen.visibility = View.GONE
+        soonScreen.visibility = View.GONE
+        paintAll()
         if (!url.isNullOrBlank()) {
             applyUaFor(url)
             web.loadUrl(url)
@@ -312,6 +298,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSoon(emoji: String, title: String, body: String, action: String, url: String?) {
         soonScreen.visibility = View.VISIBLE
+        homeScreen.visibility = View.GONE
+        discoverScreen.visibility = View.GONE
+        textScreen.visibility = View.GONE
+        browserScreen.visibility = View.GONE
         soonIcon.text = emoji
         soonTitle.text = title
         soonBody.text = body
@@ -324,153 +314,498 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /* ===================== الشاشة الرئيسية ===================== */
+    /* ===================== عناصر مشتركة ===================== */
+
+    private fun box(v: View, radiusDp: Int, bg: Int, w: Int, h: Int): com.google.android.material.card.MaterialCardView {
+        val c = com.google.android.material.card.MaterialCardView(this).apply {
+            this.radius = dp(radiusDp).toFloat()
+            setCardBackgroundColor(bg)
+            cardElevation = 0f
+            strokeWidth = 0
+        }
+        c.addView(v, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+        c.layoutParams = LinearLayout.LayoutParams(dp(w), dp(h))
+        return c
+    }
+
+    /** شريط علوي: شعار + اسم + إعدادات */
+    private fun topBar(title: String): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(14), dp(16), dp(10))
+        }
+        val logo = TextView(this).apply {
+            text = "译"
+            setTextColor(ACCENT)
+            textSize = 19f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        row.addView(box(logo, 12, ACCENT_SOFT, 38, 38))
+        row.addView(TextView(this).apply {
+            text = title
+            setTextColor(TEXT)
+            textSize = 20f
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(11), 0, 0, 0)
+        })
+        row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        val gear = TextView(this).apply {
+            text = "⚙"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(TEXT)
+            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+        }
+        row.addView(box(gear, 14, Color.WHITE, 42, 42))
+        return row
+    }
+
+    /** عنوان كبير — السطر التاني بلون مميز */
+    private fun bigHeading(a: String, b: String): TextView {
+        val sp = android.text.SpannableString(a + "\n" + b)
+        sp.setSpan(android.text.style.ForegroundColorSpan(ACCENT),
+            a.length + 1, sp.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return TextView(this).apply {
+            text = sp
+            textSize = 27f
+            setTextColor(TEXT)
+            setTypeface(typeface, Typeface.BOLD)
+            setLineSpacing(dp(5).toFloat(), 1f)
+            setPadding(dp(22), dp(46), dp(22), dp(20))
+        }
+    }
+
+    private fun sectionTitle(t: String): TextView = TextView(this).apply {
+        text = t
+        setTextColor(MUTED)
+        textSize = 13f
+        setPadding(dp(22), dp(22), dp(22), dp(12))
+    }
+
+    /* ===================== ١ · المفضلة ===================== */
+
+    private val SITES = listOf(
+        Triple("يوتيوب", "\u25B6", "https://m.youtube.com"),
+        Triple("جوجل", "G", "https://www.google.com"),
+        Triple("ويكيبيديا", "W", "https://en.wikipedia.org"),
+        Triple("ريديت", "\uD83D\uDC7D", "https://www.reddit.com"),
+        Triple("إكس", "\uD835\uDD4F", "https://twitter.com"),
+        Triple("فيسبوك", "f", "https://m.facebook.com"),
+        Triple("أمازون", "a", "https://www.amazon.de"),
+        Triple("أخبار", "\uD83D\uDCF0", "https://www.tagesschau.de")
+    )
 
     private fun buildHome() {
         homeRoot.removeAllViews()
+        homeRoot.addView(topBar("Immersive-Me"))
+        homeRoot.addView(bigHeading("اكتب الرابط", "وابدأ الترجمة الفورية"))
 
-        homeRoot.addView(TextView(this).apply {
-            text = "مرحباً \uD83D\uDC4B"
-            setTextColor(C_TEXT)
-            textSize = 24f
-            setTypeface(typeface, Typeface.BOLD)
-        })
-        homeRoot.addView(TextView(this).apply {
-            text = "Immersive-Me · " + Prefs.effectiveName()
-            setTextColor(C_MUTED)
-            textSize = 12f
-            setPadding(0, dp(2), 0, dp(18))
-        })
-
-        homeRoot.addView(sectionLabel("وصول سريع"))
-        homeRoot.addView(tileRow(listOf(
-            Triple("\uD83C\uDFAC", "يوتيوب", "https://m.youtube.com"),
-            Triple("\uD83D\uDD0D", "جوجل", "https://www.google.com"),
-            Triple("\uD83D\uDCDA", "ويكيبيديا", "https://en.wikipedia.org")
-        )))
-        homeRoot.addView(tileRow(listOf(
-            Triple("\uD83D\uDCF0", "BBC", "https://www.bbc.com/news"),
-            Triple("\uD83D\uDD34", "Reddit", "https://www.reddit.com"),
-            Triple("\uD835\uDD4F", "Twitter", "https://twitter.com")
-        )))
-        homeRoot.addView(tileRow(listOf(
-            Triple("\uD83D\uDC19", "GitHub", "https://github.com"),
-            Triple("\uD83D\uDFE0", "Hacker News", "https://news.ycombinator.com"),
-            Triple("\uD83D\uDCA1", "Stack Overflow", "https://stackoverflow.com")
-        )))
-
-        homeRoot.addView(sectionLabel("آخر الصفحات · تُترجم تلقائياً"))
-        val hist = Prefs.history
-        if (hist.isEmpty()) {
-            homeRoot.addView(TextView(this).apply {
-                text = "ما زرت أي صفحة بعد. افتح موقعاً من المتصفح وبيظهر هون."
-                setTextColor(Color.parseColor("#5C6478"))
-                textSize = 12.5f
-                setPadding(dp(4), dp(6), 0, 0)
-            })
-        } else {
-            hist.forEach { (u, t) -> homeRoot.addView(recentRow(u, t)) }
+        // حقل البحث
+        val q = EditText(this).apply {
+            hint = "ابحث أو اكتب رابطاً"
+            setHintTextColor(MUTED)
+            setTextColor(TEXT)
+            textSize = 15f
+            background = null
+            singleLine = true
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
+            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setPadding(dp(22), 0, dp(6), 0)
+            setOnEditorActionListener { _, a, _ ->
+                if (a == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
+                    goBrowser(normalize(q.text.toString())); true
+                } else false
+            }
         }
-
-        homeRoot.addView(sectionLabel("المحرّك الحالي"))
-        homeRoot.addView(TextView(this).apply {
-            text = Prefs.effectiveName()
-            setTextColor(C_BRAND)
-            textSize = 14f
-            setPadding(dp(4), 0, 0, 0)
-        })
-        homeRoot.addView(MaterialButton(this).apply {
-            text = "إدارة المفاتيح والمحرّكات"
-            textSize = 13f
-            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
-        })
-    }
-
-    private fun sectionLabel(t: String): TextView = TextView(this).apply {
-        text = t
-        setTextColor(C_MUTED)
-        textSize = 12f
-        setPadding(dp(4), dp(10), 0, dp(10))
-    }
-
-    private fun tileRow(items: List<Triple<String, String, String>>): LinearLayout {
-        val row = LinearLayout(this).apply {
+        val go = TextView(this).apply {
+            text = "\u203A"
+            textSize = 26f
+            setTextColor(MUTED)
+            gravity = Gravity.CENTER
+            setOnClickListener { goBrowser(normalize(q.text.toString())) }
+        }
+        val inner = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, dp(10))
+            gravity = Gravity.CENTER_VERTICAL
         }
-        items.forEach { (emoji, label, url) ->
-            val card = MaterialCardView(this).apply {
-                radius = dp(16).toFloat()
-                setCardBackgroundColor(C_SURFACE)
-                cardElevation = 0f
-                strokeWidth = dp(1)
-                setStrokeColor(ColorStateList.valueOf(C_SURFACE2))
-                val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                lp.setMargins(dp(4), 0, dp(4), 0)
-                layoutParams = lp
-                isClickable = true
-                setOnClickListener { goBrowser(url) }
-            }
-            val inner = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(14), dp(8), dp(14))
-            }
-            inner.addView(TextView(this).apply { text = emoji; textSize = 20f; gravity = Gravity.CENTER })
-            inner.addView(TextView(this).apply {
-                text = label
-                setTextColor(C_MUTED)
-                textSize = 11f
-                gravity = Gravity.CENTER
-                setPadding(0, dp(6), 0, 0)
-            })
-            card.addView(inner)
-            row.addView(card)
+        inner.addView(q, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+        inner.addView(go, LinearLayout.LayoutParams(dp(46), LinearLayout.LayoutParams.MATCH_PARENT))
+        val card = com.google.android.material.card.MaterialCardView(this).apply {
+            radius = dp(30).toFloat()
+            setCardBackgroundColor(Color.WHITE)
+            cardElevation = 0f
+            strokeWidth = dp(1)
+            setStrokeColor(android.content.res.ColorStateList.valueOf(LINE))
+            addView(inner)
         }
-        return row
+        val clp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(58)
+        )
+        clp.setMargins(dp(20), 0, dp(20), 0)
+        card.layoutParams = clp
+        homeRoot.addView(card)
+
+        // شبكة المواقع
+        homeRoot.addView(sectionTitle("وصول سريع"))
+        SITES.chunked(4).forEach { chunk ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(dp(14), 0, dp(14), 0)
+            }
+            chunk.forEach { (name, glyph, url) ->
+                row.addView(siteTile(name, glyph) { goBrowser(url) })
+            }
+            repeat(4 - chunk.size) { row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
+            homeRoot.addView(row)
+        }
+
+        // أدوات
+        homeRoot.addView(sectionTitle("أدوات"))
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(14), 0, dp(14), 0)
+        }
+        tools.addView(siteTile("PDF", "\uD83D\uDCC4") { pdfPicker.launch(arrayOf("application/pdf")) })
+        tools.addView(siteTile("كتب", "\uD83D\uDCD6") {
+            bookPicker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
+        })
+        tools.addView(siteTile("إعدادات", "\u2699") {
+            startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+        })
+        tools.addView(siteTile("بحث", "\uD83D\uDD0D") { goBrowser("https://www.google.com") })
+        homeRoot.addView(tools)
+
+        // آخر الصفحات
+        val hist = Prefs.history
+        if (hist.isNotEmpty()) {
+            homeRoot.addView(sectionTitle("آخر الصفحات"))
+            hist.take(4).forEach { (u, t) -> homeRoot.addView(recentRow(u, t)) }
+        }
+    }
+
+    private fun normalize(input: String): String {
+        val q = input.trim()
+        if (q.isEmpty()) return Prefs.homePage
+        return when {
+            q.startsWith("http") -> q
+            !q.contains(".") || q.contains(" ") -> "https://www.google.com/search?q=" + Uri.encode(q)
+            else -> "https://$q"
+        }
+    }
+
+    /** بلاطة موقع — مربع أبيض مدوّر + حرف + اسم تحته */
+    private fun siteTile(name: String, glyph: String, onClick: () -> Unit): LinearLayout {
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            isClickable = true
+            setPadding(0, dp(8), 0, dp(12))
+            setOnClickListener { onClick() }
+        }
+        val g = TextView(this).apply {
+            text = glyph
+            textSize = 21f
+            gravity = Gravity.CENTER
+            setTextColor(TEXT)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        col.addView(box(g, 18, Color.WHITE, 62, 62))
+        col.addView(TextView(this).apply {
+            text = name
+            setTextColor(MUTED)
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, 0)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        return col
     }
 
     private fun recentRow(url: String, title: String): LinearLayout {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(C_SURFACE)
-            setPadding(dp(12), dp(11), dp(12), dp(11))
+            setBackgroundColor(Color.WHITE)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
         }
         val lp = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        lp.setMargins(0, 0, 0, dp(8))
+        lp.setMargins(dp(16), 0, dp(16), dp(8))
         row.layoutParams = lp
         row.isClickable = true
         row.setOnClickListener { goBrowser(url) }
         row.addView(TextView(this).apply {
             val h = try { Uri.parse(url).host ?: "?" } catch (e: Exception) { "?" }
             text = h.removePrefix("www.").take(1).uppercase()
-            setTextColor(C_BRAND)
+            setTextColor(ACCENT)
             textSize = 13f
             gravity = Gravity.CENTER
-            setBackgroundColor(C_SURFACE2)
-            setPadding(dp(7), dp(5), dp(7), dp(5))
+            setBackgroundColor(ACCENT_SOFT)
+            setPadding(dp(9), dp(7), dp(9), dp(7))
         })
         row.addView(TextView(this).apply {
             text = title
-            setTextColor(C_TEXT)
-            textSize = 12.5f
+            setTextColor(TEXT)
+            textSize = 13f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            val l = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            l.setMargins(dp(10), 0, dp(10), 0)
+            val l = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            l.setMargins(dp(11), 0, dp(11), 0)
             layoutParams = l
         })
-        row.addView(TextView(this).apply {
-            text = "AR ✓"
-            setTextColor(C_OK)
-            textSize = 9.5f
-            setBackgroundColor(Color.parseColor("#224632D6"))
-            setPadding(dp(7), dp(3), dp(7), dp(3))
-        })
         return row
+    }
+
+    /* ===================== ٢ · اكتشف ===================== */
+
+    private val CATS = listOf(
+        "تقنية" to listOf(
+            "يوتيوب" to "https://m.youtube.com",
+            "هاكر نيوز" to "https://news.ycombinator.com",
+            "ذا فيرج" to "https://www.theverge.com",
+            "جيت هاب" to "https://github.com"
+        ),
+        "أخبار" to listOf(
+            "تاجشاو" to "https://www.tagesschau.de",
+            "بي بي سي" to "https://www.bbc.com/news",
+            "رويترز" to "https://www.reuters.com",
+            "الجزيرة" to "https://www.aljazeera.net"
+        ),
+        "علوم" to listOf(
+            "أركايف" to "https://arxiv.org",
+            "نيتشر" to "https://www.nature.com",
+            "ساينس دايلي" to "https://www.sciencedaily.com",
+            "ناسا" to "https://www.nasa.gov"
+        ),
+        "ترفيه" to listOf(
+            "ريديت" to "https://www.reddit.com",
+            "آي إم دي بي" to "https://www.imdb.com",
+            "سبوتيفاي" to "https://open.spotify.com",
+            "تويتر" to "https://twitter.com"
+        )
+    )
+
+    private fun buildDiscover() {
+        discoverRoot.removeAllViews()
+        discoverRoot.addView(topBar("اكتشف"))
+
+        // تبويبات الفئات
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(18), dp(4), dp(18), dp(14))
+        }
+        CATS.forEachIndexed { i, (name, _) ->
+            val tv = TextView(this).apply {
+                text = name
+                textSize = 15f
+                setTextColor(if (i == 0) ACCENT else MUTED)
+                setTypeface(typeface, if (i == 0) Typeface.BOLD else Typeface.NORMAL)
+                setPadding(0, dp(6), dp(20), dp(6))
+                setOnClickListener { discoverTab = i; buildDiscover() }
+            }
+            tabs.addView(tv)
+        }
+        discoverRoot.addView(tabs)
+
+        // خط وردي تحت التبويب النشط
+        val line = View(this).apply { setBackgroundColor(ACCENT) }
+        val lineWrap = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(18), 0, 0, dp(14))
+        }
+        lineWrap.addView(line, LinearLayout.LayoutParams(dp(56), dp(3)))
+        discoverRoot.addView(lineWrap)
+
+        // كروت المواقع
+        val cat = CATS[discoverTab.coerceIn(0, CATS.size - 1)]
+        cat.second.chunked(2).forEach { pair ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(dp(14), 0, dp(14), 0)
+            }
+            pair.forEach { (name, url) -> row.addView(discoverCard(name, url)) }
+            if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            discoverRoot.addView(row)
+        }
+
+        discoverRoot.addView(sectionTitle("اقتراحات المترجم"))
+        listOf(
+            "المقال الأسبوعي — ذكاء اصطناعي" to "https://www.technologyreview.com",
+            "ورقة بحثية مترجمة" to "https://arxiv.org/list/cs.CL/recent"
+        ).forEach { (t, u) -> discoverRoot.addView(recentRow(u, t)) }
+    }
+
+    private var discoverTab = 0
+
+    private fun discoverCard(name: String, url: String): com.google.android.material.card.MaterialCardView {
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        col.addView(TextView(this).apply {
+            val h = try { Uri.parse(url).host ?: "?" } catch (e: Exception) { "?" }
+            text = h.removePrefix("www.").take(1).uppercase()
+            setTextColor(ACCENT)
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        col.addView(TextView(this).apply {
+            text = name
+            setTextColor(TEXT)
+            textSize = 14f
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(10), 0, dp(3))
+        })
+        col.addView(TextView(this).apply {
+            text = url.replace("https://", "").take(28)
+            setTextColor(MUTED)
+            textSize = 11f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        val card = com.google.android.material.card.MaterialCardView(this).apply {
+            radius = dp(20).toFloat()
+            setCardBackgroundColor(Color.WHITE)
+            cardElevation = 0f
+            strokeWidth = 0
+            addView(col)
+            isClickable = true
+            setOnClickListener { goBrowser(url) }
+        }
+        val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        lp.setMargins(dp(6), dp(6), dp(6), dp(6))
+        card.layoutParams = lp
+        return card
+    }
+
+    /* ===================== ٣ · الترجمة (نص) ===================== */
+
+    private fun buildText() {
+        textRoot.removeAllViews()
+        textRoot.addView(topBar("الترجمة"))
+
+        // محدد اللغة
+        val langRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(6), dp(20), dp(14))
+        }
+        langRow.addView(TextView(this).apply {
+            text = "كشف تلقائي"
+            setTextColor(TEXT)
+            textSize = 15f
+        })
+        langRow.addView(TextView(this).apply {
+            text = "  \u21C4  "
+            setTextColor(MUTED)
+            textSize = 15f
+            setPadding(dp(8), 0, dp(8), 0)
+        })
+        langRow.addView(TextView(this).apply {
+            text = langName(Prefs.target)
+            setTextColor(TEXT)
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        textRoot.addView(langRow)
+
+        // الكارت الكبير
+        val input = EditText(this).apply {
+            hint = "اكتب النص للترجمة…"
+            setHintTextColor(MUTED)
+            setTextColor(TEXT)
+            textSize = 16f
+            background = null
+            gravity = Gravity.TOP
+            minLines = 8
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                    android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setPadding(dp(20), dp(18), dp(20), dp(8))
+        }
+        val outTv = TextView(this).apply {
+            setTextColor(TEXT)
+            textSize = 16f
+            setPadding(dp(20), dp(6), dp(20), dp(18))
+            setLineSpacing(dp(4).toFloat(), 1f)
+        }
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(input)
+        col.addView(outTv)
+
+        val card = com.google.android.material.card.MaterialCardView(this).apply {
+            radius = dp(24).toFloat()
+            setCardBackgroundColor(Color.WHITE)
+            cardElevation = 0f
+            strokeWidth = dp(1)
+            setStrokeColor(android.content.res.ColorStateList.valueOf(LINE))
+            addView(col)
+        }
+        val clp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        clp.setMargins(dp(18), 0, dp(18), 0)
+        card.layoutParams = clp
+        textRoot.addView(card)
+
+        // زر الترجمة
+        val btn = com.google.android.material.button.MaterialButton(this).apply {
+            text = "ترجم"
+            textSize = 15f
+            cornerRadius = dp(18)
+            setBackgroundColor(ACCENT)
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                val txt = input.text.toString().trim()
+                if (txt.isEmpty()) { snack("اكتب نصاً أول"); return@setOnClickListener }
+                outTv.text = "…"
+                pool.execute {
+                    val r = try {
+                        TranslateEngine.translate(listOf(txt), Prefs.target).firstOrNull() ?: ""
+                    } catch (e: Exception) { "✗ " + TranslateEngine.describe(e) }
+                    main.post { outTv.text = r }
+                }
+            }
+        }
+        val blp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        blp.setMargins(dp(18), dp(14), dp(18), 0)
+        btn.layoutParams = blp
+        textRoot.addView(btn)
+
+        // أزرار الملفات
+        textRoot.addView(sectionTitle("ترجمة الملفات"))
+        val frow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(14), 0, dp(14), 0)
+        }
+        frow.addView(siteTile("PDF", "\uD83D\uDCC4") { pdfPicker.launch(arrayOf("application/pdf")) })
+        frow.addView(siteTile("كتب", "\uD83D\uDCD6") {
+            bookPicker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
+        })
+        frow.addView(siteTile("ملفات", "\uD83D\uDCC1") { showSoon("\uD83D\uDCC1", "متصفح الملفات", "قريباً", "افتح", null) })
+        frow.addView(siteTile("إعدادات", "\u2699") {
+            startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+        })
+        textRoot.addView(frow)
+    }
+
+    private fun langName(code: String): String {
+        val names = mapOf(
+            "ar" to "العربية", "en" to "English", "de" to "Deutsch", "fr" to "Français",
+            "es" to "Español", "tr" to "Türkçe", "ru" to "Русский", "fa" to "فارسی",
+            "zh-CN" to "中文", "ja" to "日本語", "ko" to "한국어", "hi" to "हिन्दी"
+        )
+        return names[code] ?: code
     }
 
     /* ===================== شريط المتصفح ===================== */
@@ -501,6 +836,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnMenu.setOnClickListener { showQuickPanel() }
+        btnBack.setOnClickListener { selectTab(R.id.tab_home); bottomNav.selectedItemId = R.id.tab_home }
         tvChip.setOnClickListener { showQuickPanel() }
     }
 
@@ -1019,8 +1355,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (lastTab != R.id.tab_browser) {
-                goBrowser(null); return true
+            if (browserScreen.visibility != View.VISIBLE) {
+                selectTab(R.id.tab_home); bottomNav.selectedItemId = R.id.tab_home; return true
             }
             if (web.canGoBack()) { web.goBack(); return true }
         }
@@ -1033,7 +1369,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         paintAll()
         injectedScript = null
-        buildHome()
+        if (lastTab == R.id.tab_home) buildHome()
         if (pageReady) {          // لا ننادي JS على صفحة مو جاهزة
             web.evaluateJavascript("window.__imtConfigChanged && window.__imtConfigChanged();", null)
         }

@@ -1,15 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#0D1015</color>
-    <color name="surface">#161A21</color>
-    <color name="surface2">#1F242D</color>
-    <color name="surface3">#272D38</color>
-    <color name="brand">#7BA0FF</color>
-    <color name="brand_dim">#3A4A78</color>
-    <color name="on_surface">#E7EAF2</color>
-    <color name="muted">#8B94A7</color>
-    <color name="ok">#46D68C</color>
-    <color name="warn">#FFB74D</color>
-    <color name="err">#FF6B6B</color>
-    <color name="ic_launcher_background">#161A21</color>
+    <!-- ===== الوضع الفاتح (الافتراضي) ===== -->
+    <color name="bg">#F4F4F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface2">#EFEFF4</color>
+    <color name="accent">#E9457B</color>
+    <color name="accent_soft">#FCE4EE</color>
+    <color name="accent2">#7C5CFF</color>
+    <color name="on_surface">#16161A</color>
+    <color name="muted">#8A8A94</color>
+    <color name="line">#E8E8EE</color>
+    <color name="ok">#22B573</color>
+
+    <!-- ألوان بلاطات المواقع -->
+    <color name="tile1">#FFE3E9</color>
+    <color name="tile2">#E5EAFF</color>
+    <color name="tile3">#E4F6EC</color>
+    <color name="tile4">#FFF1DC</color>
+    <color name="tile5">#F0E6FF</color>
+    <color name="tile6">#E0F4FA</color>
+
+    <color name="ic_launcher_background">#FFFFFF</color>
 </resources>

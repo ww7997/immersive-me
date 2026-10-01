@@ -1,37 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="AppTheme" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">@color/brand</item>
-        <item name="colorOnPrimary">#0B1020</item>
-        <item name="colorPrimaryContainer">@color/brand_dim</item>
-        <item name="colorOnPrimaryContainer">@color/on_surface</item>
-        <item name="colorSecondary">@color/ok</item>
+    <style name="AppTheme" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">@color/accent_soft</item>
+        <item name="colorOnPrimaryContainer">#8A1E45</item>
+        <item name="colorSecondary">@color/accent2</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/on_surface</item>
         <item name="colorSurfaceVariant">@color/surface2</item>
         <item name="colorOnSurfaceVariant">@color/muted</item>
-        <item name="colorOutline">@color/surface3</item>
+        <item name="colorOutline">@color/line</item>
         <item name="android:colorBackground">@color/bg</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@color/bg</item>
-        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/surface</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:textColorPrimary">@color/on_surface</item>
         <item name="android:textColorSecondary">@color/muted</item>
         <item name="materialAlertDialogTheme">@style/ImtDialog</item>
     </style>
 
     <style name="ImtDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
-        <item name="colorSurface">@color/surface2</item>
+        <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/on_surface</item>
     </style>
 
-    <style name="ImtIconButton">
-        <item name="android:layout_width">44dp</item>
-        <item name="android:layout_height">44dp</item>
-        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
-        <item name="android:padding">10dp</item>
-        <item name="tint">@color/muted</item>
+    <!-- مؤشّر التبويب النشط (الحبّة الرمادية بالتنقّل السفلي) -->
+    <style name="NavIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/surface2</item>
+        <item name="android:width">68dp</item>
+        <item name="android:height">34dp</item>
     </style>
 
 </resources>

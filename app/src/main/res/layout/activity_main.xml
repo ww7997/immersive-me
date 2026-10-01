@@ -13,12 +13,58 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <!-- ===================== شاشة المتصفح ===================== -->
+        <!-- ===================== المفضلة (الرئيسية) ===================== -->
+        <ScrollView
+            android:id="@+id/homeScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg"
+            android:fillViewport="true">
+            <LinearLayout
+                android:id="@+id/homeRoot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="26dp" />
+        </ScrollView>
+
+        <!-- ===================== اكتشف ===================== -->
+        <ScrollView
+            android:id="@+id/discoverScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg"
+            android:visibility="gone">
+            <LinearLayout
+                android:id="@+id/discoverRoot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="26dp" />
+        </ScrollView>
+
+        <!-- ===================== الترجمة (نص) ===================== -->
+        <ScrollView
+            android:id="@+id/textScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg"
+            android:visibility="gone">
+            <LinearLayout
+                android:id="@+id/textRoot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="26dp" />
+        </ScrollView>
+
+        <!-- ===================== المتصفح ===================== -->
         <LinearLayout
             android:id="@+id/browserScreen"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:visibility="gone">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -26,11 +72,23 @@
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@color/surface"
-                android:paddingStart="10dp"
+                android:paddingStart="8dp"
                 android:paddingEnd="6dp"
                 android:paddingTop="8dp"
                 android:paddingBottom="8dp"
-                android:elevation="6dp">
+                android:elevation="3dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBack"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:minWidth="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="‹"
+                    android:textSize="24sp"
+                    android:textColor="@color/on_surface" />
 
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="0dp"
@@ -71,7 +129,7 @@
                     app:iconSize="21dp"
                     app:iconPadding="0dp"
                     app:iconGravity="textStart"
-                    app:iconTint="@color/muted" />
+                    app:iconTint="@color/on_surface" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnMenu"
@@ -85,7 +143,7 @@
                     app:iconSize="21dp"
                     app:iconPadding="0dp"
                     app:iconGravity="textStart"
-                    app:iconTint="@color/muted" />
+                    app:iconTint="@color/on_surface" />
             </LinearLayout>
 
             <LinearLayout
@@ -118,7 +176,7 @@
                     android:paddingStart="10dp"
                     android:paddingEnd="10dp"
                     android:text="AR"
-                    android:textColor="@color/brand"
+                    android:textColor="@color/accent"
                     android:textSize="11sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -130,7 +188,7 @@
                 android:layout_height="2dp"
                 android:max="100"
                 android:progress="0"
-                android:progressTint="@color/brand"
+                android:progressTint="@color/accent"
                 android:visibility="invisible" />
 
             <FrameLayout
@@ -149,39 +207,20 @@
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom|end"
                     android:layout_margin="16dp"
-                    android:alpha="0.95"
+                    android:alpha="0.96"
                     android:text="ترجمة"
-                    android:textColor="@color/muted"
+                    android:textColor="#FFFFFF"
                     android:textSize="14sp"
-                    app:backgroundTint="@color/surface2"
+                    app:backgroundTint="@color/accent"
                     app:elevation="8dp"
-                    app:icon="@drawable/ic_translate"
+                    app:icon="@drawable/ic_nav_text"
                     app:iconPadding="8dp"
                     app:iconSize="20dp"
-                    app:iconTint="@color/muted" />
+                    app:iconTint="#FFFFFF" />
             </FrameLayout>
         </LinearLayout>
 
-        <!-- ===================== الشاشة الرئيسية ===================== -->
-        <ScrollView
-            android:id="@+id/homeScreen"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@color/bg"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:id="@+id/homeRoot"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingTop="18dp"
-                android:paddingBottom="24dp" />
-        </ScrollView>
-
-        <!-- ===================== شاشة قيد البناء ===================== -->
+        <!-- ===================== قيد البناء ===================== -->
         <LinearLayout
             android:id="@+id/soonScreen"
             android:layout_width="match_parent"
@@ -192,41 +231,19 @@
             android:padding="32dp"
             android:visibility="gone">
 
-            <TextView
-                android:id="@+id/soonIcon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="🚧"
-                android:textSize="52sp" />
-
-            <TextView
-                android:id="@+id/soonTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="قيد البناء"
-                android:textColor="@color/on_surface"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/soonBody"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:gravity="center"
-                android:lineSpacingExtra="4dp"
-                android:text=""
-                android:textColor="@color/muted"
-                android:textSize="13sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/soonAction"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="22dp"
-                android:text="افتح في المتصفح"
-                android:textSize="13sp"
+            <TextView android:id="@+id/soonIcon" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="🚧" android:textSize="52sp" />
+            <TextView android:id="@+id/soonTitle" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:layout_marginTop="18dp"
+                android:text="قيد البناء" android:textColor="@color/on_surface"
+                android:textSize="20sp" android:textStyle="bold" />
+            <TextView android:id="@+id/soonBody" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="10dp"
+                android:gravity="center" android:lineSpacingExtra="4dp" android:text=""
+                android:textColor="@color/muted" android:textSize="13sp" />
+            <com.google.android.material.button.MaterialButton android:id="@+id/soonAction"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="22dp" android:text="افتح" android:textSize="13sp"
                 android:visibility="gone" />
         </LinearLayout>
     </FrameLayout>
@@ -236,10 +253,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/surface"
-        app:elevation="10dp"
+        app:elevation="12dp"
         app:labelVisibilityMode="labeled"
         app:itemIconTint="@color/nav_item"
         app:itemTextColor="@color/nav_item"
+        app:itemActiveIndicatorStyle="@style/NavIndicator"
         app:menu="@menu/bottom_nav" />
 
 </LinearLayout>
