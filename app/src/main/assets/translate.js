@@ -597,6 +597,18 @@
     document.addEventListener('scroll', handler, { passive: true, capture: true });
   }
 
+  /** هل النص أصلاً بلغة الهدف؟ — يمنع حلقة لا نهاية (نترجم ترجمتنا) */
+  function looksTarget(s) {
+    if (!s) return false;
+    var t = CFG.target || 'ar';
+    if (t.indexOf('ar') === 0 || t.indexOf('fa') === 0 || t.indexOf('ur') === 0) {
+      return /[\u0600-\u06FF]/.test(s);
+    }
+    if (t.indexOf('zh') === 0) return /[\u4E00-\u9FFF]/.test(s);
+    if (t.indexOf('ru') === 0) return /[\u0400-\u04FF]/.test(s);
+    return false;
+  }
+
   /* ===== الطريقة الذكية: نستبدل نص يوتيوب نفسه بدل ما نبني تراكب ===== */
   var YR = { cache: {}, miss: {}, last: '' };
 
@@ -608,6 +620,7 @@
     if (!txt) return;
     if (txt === win.__imtOut) return;        // نحنا اللي كتبناها
     if (txt === win.__imtSrc) return;        // ما تغيّرت من يوتيوب
+    if (looksTarget(txt)) return;            // ← حماية الحلقة: خرجنا نحنا
 
     win.__imtSrc = txt;
     var k = ytNorm(txt);
@@ -626,6 +639,7 @@
     // ترجمة لحظية (ما لقيناها جاهزة)
     ytWriteCaption(win, '…', txt);
     if (YR.miss[k]) return;
+    if (looksTarget(txt)) return;
     YR.miss[k] = 1;
     bridgeTranslate([txt]).then(function (r) {
       var tr = ((r && r[0]) || '').trim();
@@ -648,7 +662,8 @@
     b.textContent = tr;
     b.style.cssText = 'display:block;font-weight:600;';
     win.appendChild(b);
-    win.__imtOut = tr;
+    // في الوضع الثنائي textContent = الأصل + الترجمة، فنحفظ كامل النص لمنع الحلقة
+    win.__imtOut = (CFG.subs === 'both') ? (orig + ' ' + tr) : tr;
   }
 
   /* ===== لوحة تشخيص — تخلّي المشكلة تبان بصورة وحدة ===== */
@@ -1012,6 +1027,7 @@
     var shown = ytLiveText();
     if (shown && shown !== YT.lastShown) {
       YT.lastShown = shown;
+      if (looksTarget(shown)) return;          // ← حماية الحلقة: نصنا نحنا
       var hit = YT.loaded ? ytLookup(shown) : null;
       if (hit) {
         YT.hitIdx = hit.i;
