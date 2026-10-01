@@ -411,15 +411,16 @@ class MainActivity : AppCompatActivity() {
             setTextColor(TEXT)
             textSize = 15f
             background = null
-            singleLine = true
+            setSingleLine(true)
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
             inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
             setPadding(dp(22), 0, dp(6), 0)
-            setOnEditorActionListener { _, a, _ ->
-                if (a == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
-                    goBrowser(normalize(q.text.toString())); true
-                } else false
-            }
+        }
+        q.setOnEditorActionListener { _, a, _ ->
+            if (a == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
+                goBrowser(normalize(q.text.toString()))
+                true
+            } else false
         }
         val go = TextView(this).apply {
             text = "\u203A"
