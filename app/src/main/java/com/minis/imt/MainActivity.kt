@@ -491,6 +491,21 @@ class MainActivity : AppCompatActivity() {
         })
 
         title("المتصفح")
+        root.addView(MaterialButton(this).apply {
+            text = "🧹 تصفير بيانات المتصفح (كاش + كوكيز)"
+            textSize = 13f
+            setOnClickListener {
+                try {
+                    web.clearCache(true)
+                    web.clearHistory()
+                    CookieManager.getInstance().removeAllCookies(null)
+                    CookieManager.getInstance().flush()
+                    web.clearFormData()
+                    snack("تم التصفير — أُعيد تحميل الصفحة")
+                    web.reload()
+                } catch (e: Exception) { snack("تعذّر التصفير") }
+            }
+        })
         root.addView(MaterialSwitch(this).apply {
             text = "وضع سطح المكتب (يفتح المواقع كنسخة الكمبيوتر)"
             textSize = 14f
@@ -685,7 +700,7 @@ class MainActivity : AppCompatActivity() {
                 currentHost = hostOf(url)
             }
 
-            /** إعادة محاولة تلقائية عند أخطاء الشبكة العابرة (ERR_NETWORK_CHANGED وغيرها) */
+            /** إعادة محاولة تلقائية عند أخطاء الشبكة العابرة — مع تصفير الكاش عند اللزوم */
             override fun onReceivedError(
                 view: WebView?, request: WebResourceRequest?, error: WebResourceError?
             ) {
@@ -695,15 +710,25 @@ class MainActivity : AppCompatActivity() {
                                 desc.contains("ERR_CONNECTION") ||
                                 desc.contains("ERR_TIMED_OUT") ||
                                 desc.contains("ERR_INTERNET_DISCONNECTED") ||
-                                desc.contains("ERR_NETWORK_IO")
+                                desc.contains("ERR_NETWORK_IO") ||
+                                desc.contains("ERR_CACHE")
                 if (!transient) return
-                if (netRetries >= 3) { netRetries = 0; return }
+                if (netRetries >= 3) {
+                    netRetries = 0
+                    tvStatus.text = "تعذّر التحميل: $desc — جرّب تحديث الصفحة"
+                    return
+                }
                 netRetries++
                 val n = netRetries
-                tvStatus.text = "انقطعت الشبكة — إعادة محاولة $n/3…"
+                tvStatus.text = "انقطعت الشبكة — محاولة $n/3…"
                 main.postDelayed({
-                    if (!destroyed) { try { view?.reload() } catch (e: Exception) {} }
-                }, 1800L * n)
+                    if (destroyed) return@postDelayed
+                    try {
+                        if (n >= 2) web.clearCache(true)      // كاش تالف؟ نصفّرو
+                        CookieManager.getInstance().flush()
+                        view?.reload()
+                    } catch (e: Exception) {}
+                }, 1500L * n)
             }
 
             override fun onPageCommitVisible(view: WebView?, url: String?) {

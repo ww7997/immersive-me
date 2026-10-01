@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  سياسة أمان الشبكة.
+  الأهم: نثق بشهادات المستخدم (src="user") — لأن حاجبات الإعلانات
+  مثل AdGuard تفلتر HTTPS بشهادة خاصة بها. بدون هالسطر،
+  كل اتصال يمرّ من AdGuard يفشل → ERR_NETWORK_CHANGED على المواقع الثقيلة مثل يوتيوب.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
