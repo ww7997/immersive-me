@@ -47,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fabTr: com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
     private lateinit var btnMenu: MaterialButton
     private lateinit var btnBack: MaterialButton
+    private lateinit var btnReload: MaterialButton
     private lateinit var tvStatus: TextView
     private lateinit var tvChip: TextView
 
@@ -231,6 +232,7 @@ class MainActivity : AppCompatActivity() {
         discoverScreen = findViewById(R.id.discoverScreen)
         textScreen = findViewById(R.id.textScreen)
         btnBack = findViewById(R.id.btnBack)
+        btnReload = findViewById(R.id.btnReload)
         soonIcon = findViewById(R.id.soonIcon)
         soonTitle = findViewById(R.id.soonTitle)
         soonBody = findViewById(R.id.soonBody)
@@ -389,14 +391,14 @@ class MainActivity : AppCompatActivity() {
     /* ===================== ١ · المفضلة ===================== */
 
     private val SITES = listOf(
-        Triple("يوتيوب", "\u25B6", "https://m.youtube.com"),
-        Triple("جوجل", "G", "https://www.google.com"),
-        Triple("ويكيبيديا", "W", "https://en.wikipedia.org"),
-        Triple("ريديت", "\uD83D\uDC7D", "https://www.reddit.com"),
-        Triple("إكس", "\uD835\uDD4F", "https://twitter.com"),
-        Triple("فيسبوك", "f", "https://m.facebook.com"),
-        Triple("أمازون", "a", "https://www.amazon.de"),
-        Triple("أخبار", "\uD83D\uDCF0", "https://www.tagesschau.de")
+        Triple("YouTube", "\u25B6", "https://m.youtube.com"),
+        Triple("Google", "G", "https://www.google.com"),
+        Triple("Wikipedia", "W", "https://en.wikipedia.org"),
+        Triple("Reddit", "R", "https://www.reddit.com"),
+        Triple("X", "\uD835\uDD4F", "https://twitter.com"),
+        Triple("Facebook", "f", "https://m.facebook.com"),
+        Triple("Amazon", "a", "https://www.amazon.de"),
+        Triple("News", "N", "https://www.tagesschau.de")
     )
 
     private fun buildHome() {
@@ -471,13 +473,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(14), 0, dp(14), 0)
         }
         tools.addView(siteTile("PDF", "\uD83D\uDCC4") { pdfPicker.launch(arrayOf("application/pdf")) })
-        tools.addView(siteTile("كتب", "\uD83D\uDCD6") {
+        tools.addView(siteTile("Books", "\uD83D\uDCD6") {
             bookPicker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
         })
-        tools.addView(siteTile("إعدادات", "\u2699") {
+        tools.addView(siteTile("Settings", "\u2699") {
             startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
         })
-        tools.addView(siteTile("بحث", "\uD83D\uDD0D") { goBrowser("https://www.google.com") })
+        tools.addView(siteTile("Search", "\uD83D\uDD0D") { goBrowser("https://www.google.com") })
         homeRoot.addView(tools)
 
         // آخر الصفحات
@@ -510,7 +512,7 @@ class MainActivity : AppCompatActivity() {
         }
         val g = TextView(this).apply {
             text = glyph
-            textSize = 21f
+            textSize = 23f
             gravity = Gravity.CENTER
             setTextColor(TEXT)
             setTypeface(typeface, Typeface.BOLD)
@@ -519,7 +521,7 @@ class MainActivity : AppCompatActivity() {
         col.addView(TextView(this).apply {
             text = name
             setTextColor(MUTED)
-            textSize = 11.5f
+            textSize = 13f
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, 0)
             maxLines = 1
@@ -790,11 +792,11 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(14), 0, dp(14), 0)
         }
         frow.addView(siteTile("PDF", "\uD83D\uDCC4") { pdfPicker.launch(arrayOf("application/pdf")) })
-        frow.addView(siteTile("كتب", "\uD83D\uDCD6") {
+        frow.addView(siteTile("Books", "\uD83D\uDCD6") {
             bookPicker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
         })
-        frow.addView(siteTile("ملفات", "\uD83D\uDCC1") { showSoon("\uD83D\uDCC1", "متصفح الملفات", "قريباً", "افتح", null) })
-        frow.addView(siteTile("إعدادات", "\u2699") {
+        frow.addView(siteTile("Files", "\uD83D\uDCC1") { showSoon("\uD83D\uDCC1", "متصفح الملفات", "قريباً", "افتح", null) })
+        frow.addView(siteTile("Settings", "\u2699") {
             startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
         })
         textRoot.addView(frow)
@@ -838,6 +840,11 @@ class MainActivity : AppCompatActivity() {
 
         btnMenu.setOnClickListener { showQuickPanel() }
         btnBack.setOnClickListener { selectTab(R.id.tab_home); bottomNav.selectedItemId = R.id.tab_home }
+        btnReload.setOnClickListener {
+            try {
+                if (progress.visibility == View.VISIBLE) web.stopLoading() else web.reload()
+            } catch (e: Exception) {}
+        }
         tvChip.setOnClickListener { showQuickPanel() }
     }
 

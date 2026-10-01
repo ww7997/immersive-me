@@ -158,7 +158,7 @@ object Prefs {
 
     /** لهجة الترجمة العربية — الافتراضي سورية */
     var dialect: String
-        get() = sp.getString("dialect", "sy")!!
+        get() = sp.getString("dialect", "fusha")!!
         set(v) = sp.edit().putString("dialect", v).apply()
 
     /** وصف حر للهجة/الأسلوب — يتجاوز القائمة الجاهزة */

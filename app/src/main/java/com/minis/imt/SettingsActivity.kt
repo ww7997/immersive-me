@@ -193,9 +193,9 @@ class SettingsActivity : AppCompatActivity() {
 
             addView(label("لهجة الترجمة العربية — تعمل مع محرّكات الذكاء الاصطناعي"))
             val dGroup = ChipGroup(this@SettingsActivity).apply { isSingleSelection = true }
-            listOf("sy" to "سورية", "lb" to "لبنانية", "eg" to "مصرية",
-                   "gulf" to "خليجية", "iq" to "عراقية", "ma" to "مغربية",
-                   "fusha" to "فصحى").forEach { (code, lbl) ->
+            listOf("fusha" to "فصحى ✅", "sy" to "سورية", "lb" to "لبنانية",
+                   "eg" to "مصرية", "gulf" to "خليجية", "iq" to "عراقية",
+                   "ma" to "مغربية").forEach { (code, lbl) ->
                 dGroup.addView(Chip(this@SettingsActivity).apply {
                     text = lbl
                     textSize = 13f
@@ -220,9 +220,9 @@ class SettingsActivity : AppCompatActivity() {
             }
             addView(pGroup)
 
-            addView(label("لهجة مخصصة — وصف حر (يتقدّم على الشرائح فوق)"))
+            addView(label("🎯 برومبت مخصص / لهجة — يتقدّم على كل شي فوق"))
             val cDial = TextInputEditText(this@SettingsActivity).apply {
-                hint = "مثال: لهجة حلب التجارية، بلا كلمات فرنسية، أسلوب بسيط"
+                hint = "مثال: Translate into clear Modern Standard Arabic. Keep technical terms in English."
                 setText(Prefs.customDialect)
                 setTextColor(Color.parseColor(C_TEXT))
                 textSize = 13f
