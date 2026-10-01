@@ -91,6 +91,7 @@ class MainActivity : AppCompatActivity() {
 
     private var ytFixAt = 0L
     private var destroyed = false
+    private var netRetries = 0
 
     /** يختار وكيل المستخدم — وضع سطح المكتب صار خيار المستخدم فقط */
     private fun applyUaFor(url: String?) {
@@ -666,6 +667,31 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 if (!urlBar.hasFocus()) urlBar.setText(url ?: "")
                 currentHost = hostOf(url)
+            }
+
+            /** إعادة محاولة تلقائية عند أخطاء الشبكة العابرة (ERR_NETWORK_CHANGED وغيرها) */
+            override fun onReceivedError(
+                view: WebView?, request: WebResourceRequest?, error: WebResourceError?
+            ) {
+                if (request?.isForMainFrame != true) return
+                val desc = error?.description?.toString() ?: ""
+                val transient = desc.contains("ERR_NETWORK_CHANGED") ||
+                                desc.contains("ERR_CONNECTION") ||
+                                desc.contains("ERR_TIMED_OUT") ||
+                                desc.contains("ERR_INTERNET_DISCONNECTED") ||
+                                desc.contains("ERR_NETWORK_IO")
+                if (!transient) return
+                if (netRetries >= 3) { netRetries = 0; return }
+                netRetries++
+                val n = netRetries
+                tvStatus.text = "انقطعت الشبكة — إعادة محاولة $n/3…"
+                main.postDelayed({
+                    if (!destroyed) { try { view?.reload() } catch (e: Exception) {} }
+                }, 1800L * n)
+            }
+
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                netRetries = 0
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
